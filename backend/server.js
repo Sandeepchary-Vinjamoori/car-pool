@@ -16,9 +16,32 @@ app.use("/api/auth", authRoutes); // Register/Login
 app.use("/api/users", userRoutes); // CRUD operations
 
 
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log("MongoDB connected"))
-  .catch(err => console.log(err));
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  const dbState = mongoose.connection.readyState; // 0=disconnected,1=connected,2=connecting,3=disconnecting
+  res.json({
+    status: "ok",
+    db: dbState,
+    port: process.env.PORT || 5000,
+  });
+});
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+const start = async () => {
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000,
+    });
+    console.log("MongoDB connected");
+
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  } catch (err) {
+    console.error("Mongo connection error:", err.message);
+    process.exit(1);
+  }
+};
+
+start();

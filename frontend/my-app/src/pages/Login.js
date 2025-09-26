@@ -11,17 +11,20 @@ function Login() {
     e.preventDefault();
 
     try {
-      const res = await axios.post("http://localhost:5000/api/auth/login", {
+      const res = await axios.post("/api/auth/login", {
         email,
         password,
       });
-
-      alert(res.data.message);
-      localStorage.setItem("token", res.data.token); // save token
-      navigate("/dashboard"); // redirect to dashboard
+      const token = res.data?.token;
+      if (token) {
+        localStorage.setItem("token", token);
+        navigate("/dashboard");
+        return;
+      }
+      alert(res.data?.message || "Unexpected response from server");
     } catch (err) {
-      console.error(err.response?.data); // log backend error
-      alert(err.response?.data?.message || "Error logging in");
+      console.error(err.response?.data);
+      alert(err.response?.data?.message || err.message || "Error logging in");
     }
   };
 

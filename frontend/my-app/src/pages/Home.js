@@ -11,14 +11,14 @@ function Home() {
       <div style={{ marginTop: "30px" }}>
         <button
           style={{ marginRight: "10px", padding: "10px 20px" }}
-          onClick={() => navigate("/Login")}
+          onClick={() => navigate("/login")}
         >
           Login
         </button>
 
         <button
           style={{ padding: "10px 20px" }}
-          onClick={() => navigate("/Register")}
+          onClick={() => navigate("/register")}
         >
           Register
         </button>

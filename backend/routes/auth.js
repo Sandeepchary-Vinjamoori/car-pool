@@ -11,12 +11,22 @@ router.post("/register", async (req, res) => {
     const existingUser = await User.findOne({ email });
     if (existingUser) return res.status(400).json({ message: "User already exists" });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword });
+    // Let the User model's pre-save hook hash the password
+    const user = new User({ name, email, password });
     await user.save();
     res.status(201).json({ message: "User registered successfully" });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Register error:", err);
+    // Duplicate key error (unique email)
+    if (err.code === 11000) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+    // Validation error details
+    if (err.name === "ValidationError") {
+      const details = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ message: "Validation error", details });
+    }
+    res.status(500).json({ message: "Server error", details: err.message });
   }
 });
 
@@ -42,3 +52,5 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+module.exports = router;
