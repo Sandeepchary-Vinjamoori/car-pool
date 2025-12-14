@@ -3,134 +3,83 @@ const router = express.Router();
 const Ride = require("../models/Ride");
 const jwt = require("jsonwebtoken");
 
-// -------------------- AUTH MIDDLEWARE --------------------
+// -------------------- AUTH --------------------
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "No token provided" });
+  if (!token) return res.status(401).json({ message: "No token" });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
     next();
-  } catch (err) {
+  } catch {
     res.status(401).json({ message: "Invalid token" });
   }
 };
 
-// -------------------- BOOK A RIDE --------------------
+// -------------------- ROUTE API (FIXED) --------------------
+router.post("/route", auth, async (req, res) => {
+  try {
+    const { start, end } = req.body;
+
+    if (!start || !end) {
+      return res.status(400).json({ message: "Start & end required" });
+    }
+
+    const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.routes || data.routes.length === 0) {
+      return res.status(404).json({ message: "No route found" });
+    }
+
+    res.json(data.routes[0]);
+  } catch (err) {
+    console.error("Route API error:", err);
+    res.status(500).json({ message: "Route fetch failed" });
+  }
+});
+
+// -------------------- BOOK --------------------
 router.post("/book", auth, async (req, res) => {
   const { pickup, drop, dateTime } = req.body;
 
   if (!pickup || !drop || !dateTime) {
-    return res.status(400).json({ message: "All fields are required" });
+    return res.status(400).json({ message: "All fields required" });
   }
 
-  if (pickup.trim().toLowerCase() === drop.trim().toLowerCase()) {
-    return res.status(400).json({
-      message: "Pickup and drop locations cannot be the same",
-    });
-  }
+  const ride = new Ride({
+    user: req.user.id,
+    pickup,
+    drop,
+    dateTime,
+    status: "pending",
+  });
 
-  const rideDate = new Date(dateTime);
-  if (isNaN(rideDate)) {
-    return res.status(400).json({ message: "Invalid date and time" });
-  }
-
-  if (rideDate < new Date()) {
-    return res.status(400).json({
-      message: "Ride date and time must be in the future",
-    });
-  }
-
-  try {
-    const ride = new Ride({
-      user: req.user.id,
-      pickup,
-      drop,
-      dateTime: rideDate,
-      status: "pending",
-    });
-
-    await ride.save();
-    res.json({ message: "Ride booked successfully", ride });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Booking failed" });
-  }
+  await ride.save();
+  res.json({ message: "Ride booked", ride });
 });
 
-// -------------------- GET USER RIDE STATS --------------------
+// -------------------- STATS --------------------
 router.get("/stats", auth, async (req, res) => {
-  try {
-    const total = await Ride.countDocuments({ user: req.user.id });
-    const pending = await Ride.countDocuments({
-      user: req.user.id,
-      status: "pending",
-    });
-    const completed = await Ride.countDocuments({
-      user: req.user.id,
-      status: "completed",
-    });
+  const total = await Ride.countDocuments({ user: req.user.id });
+  const pending = await Ride.countDocuments({
+    user: req.user.id,
+    status: "pending",
+  });
+  const completed = await Ride.countDocuments({
+    user: req.user.id,
+    status: "completed",
+  });
 
-    res.json({ total, pending, completed });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch stats" });
-  }
+  res.json({ total, pending, completed });
 });
 
-// -------------------- GET USER RIDES (NEW) --------------------
+// -------------------- MY RIDES --------------------
 router.get("/my", auth, async (req, res) => {
-  try {
-    const rides = await Ride.find({ user: req.user.id })
-      .sort({ createdAt: -1 });
-
-    res.json(rides);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch rides" });
-  }
+  const rides = await Ride.find({ user: req.user.id }).sort({ createdAt: -1 });
+  res.json(rides);
 });
-// -------------------- MARK RIDE AS COMPLETED --------------------
-router.put("/:id/complete", auth, async (req, res) => {
-  try {
-    const ride = await Ride.findOne({
-      _id: req.params.id,
-      user: req.user.id,
-    });
-
-    if (!ride) {
-      return res.status(404).json({ message: "Ride not found" });
-    }
-
-    ride.status = "completed";
-    await ride.save();
-
-    res.json({ message: "Ride marked as completed" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to update ride" });
-  }
-});
-// -------------------- CANCEL RIDE --------------------
-router.delete("/:id", auth, async (req, res) => {
-  try {
-    const ride = await Ride.findOne({
-      _id: req.params.id,
-      user: req.user.id,
-    });
-
-    if (!ride) {
-      return res.status(404).json({ message: "Ride not found" });
-    }
-
-    await ride.deleteOne();
-    res.json({ message: "Ride cancelled successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to cancel ride" });
-  }
-});
-
 
 module.exports = router;

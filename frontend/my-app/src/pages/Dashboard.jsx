@@ -2,209 +2,208 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
-function Dashboard() {
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Polyline,
+  useMap,
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+// Fix marker icons
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
+
+// Auto fit map to route
+function FitRoute({ coords }) {
+  const map = useMap();
+  useEffect(() => {
+    if (coords.length) map.fitBounds(coords);
+  }, [coords, map]);
+  return null;
+}
+
+export default function Dashboard() {
   const navigate = useNavigate();
-  const [userData, setUserData] = useState(null);
   const [isOpen, setIsOpen] = useState(true);
 
-  // 🚗 Booking states
-  const [pickup, setPickup] = useState("");
-  const [drop, setDrop] = useState("");
-  const [dateTime, setDateTime] = useState("");
-
-  // 📊 Stats state
+  const [userData, setUserData] = useState(null);
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
     completed: 0,
   });
 
+  const [pickup, setPickup] = useState("");
+  const [drop, setDrop] = useState("");
+  const [dateTime, setDateTime] = useState("");
+
+  const [pickupCoords, setPickupCoords] = useState(null);
+  const [dropCoords, setDropCoords] = useState(null);
+
+  const [routeCoords, setRouteCoords] = useState([]);
+  const [distance, setDistance] = useState(null);
+  const [duration, setDuration] = useState(null);
+
+  // Auth
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) {
-      navigate("/login");
-      return;
-    }
+    if (!token) return navigate("/login");
 
-    const fetchUser = async () => {
-      try {
-        const res = await axios.get("/api/users/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setUserData(res.data);
-      } catch (err) {
-        localStorage.removeItem("token");
-        navigate("/login");
-      }
-    };
+    axios
+      .get("/api/users/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => setUserData(res.data));
 
-    fetchUser();
     fetchStats();
   }, [navigate]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    navigate("/login");
-  };
-
-  // 📊 Fetch stats
   const fetchStats = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get("/api/rides/stats", {
-        headers: { Authorization: `Bearer ${token}` },
+    const token = localStorage.getItem("token");
+    const res = await axios.get("/api/rides/stats", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setStats(res.data);
+  };
+
+  // Geocoding
+  const getCoordinates = async (address, setter) => {
+    if (!address || address.length < 3) return;
+
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        address
+      )}`
+    );
+    const data = await res.json();
+
+    if (data.length) {
+      setter({
+        lat: Number(data[0].lat),
+        lng: Number(data[0].lon),
       });
-      setStats(res.data);
-    } catch (err) {
-      console.log("Failed to fetch stats", err);
     }
   };
 
-  // ✅ Booking function
-  const handleBooking = async () => {
-    if (!pickup || !drop || !dateTime) {
-      alert("Please fill all fields");
-      return;
-    }
+  // ROUTE (via backend)
+  const fetchRoute = async (start, end) => {
+    const token = localStorage.getItem("token");
 
-    try {
-      const token = localStorage.getItem("token");
+    const res = await axios.post(
+      "/api/rides/route",
+      { start, end },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
-      await axios.post(
-        "/api/rides/book",
-        { pickup, drop, dateTime },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+    const route = res.data;
 
-      alert("🚗 Ride booked successfully!");
-      setPickup("");
-      setDrop("");
-      setDateTime("");
-      fetchStats(); // 🔥 refresh stats
-    } catch (err) {
-      console.log(err);
-      alert("Booking failed");
-    }
+    setRouteCoords(
+      route.geometry.coordinates.map(([lng, lat]) => [lat, lng])
+    );
+    setDistance((route.distance / 1000).toFixed(2));
+    setDuration(Math.round(route.duration / 60));
   };
+
+  useEffect(() => {
+    if (pickupCoords && dropCoords) {
+      fetchRoute(pickupCoords, dropCoords);
+    }
+  }, [pickupCoords, dropCoords]);
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100">
-      {/* Sidebar */}
+    <div className="flex min-h-screen bg-blue-50">
+      {/* SIDEBAR */}
       <aside
         className={`${
           isOpen ? "w-72" : "w-20"
-        } bg-gradient-to-b from-blue-700 to-blue-900 text-white shadow-2xl p-6 flex flex-col rounded-r-3xl transition-all duration-300`}
+        } bg-blue-800 text-white p-6`}
       >
-        <h2 className="text-2xl font-extrabold mb-10 tracking-wide text-center">
-          {isOpen ? "Drive Buddy" : "🚗"}
-        </h2>
-
-        <ul className="flex flex-col gap-6 text-lg font-medium">
-          <li className="flex items-center gap-3 cursor-pointer hover:text-yellow-300 transition">
-            🚗 {isOpen && "Book a Ride"}
+        <button onClick={() => setIsOpen(!isOpen)}>☰</button>
+        <ul className="mt-10 space-y-6">
+          <li>🚗 {isOpen && "Book Ride"}</li>
+          <li onClick={() => navigate("/my-rides")}>
+            🗓 {isOpen && "My Rides"}
           </li>
-          <li className="flex items-center gap-3 cursor-pointer hover:text-yellow-300 transition">
-            🧍 {isOpen && "Request a Ride"}
-          </li>
-          <li
-  className="flex items-center gap-3 cursor-pointer hover:text-yellow-300 transition"
-  onClick={() => navigate("/my-rides")}
->
-  🗓 {isOpen && "My Rides"}
-</li>
-
         </ul>
-
-        <div className="mt-auto">
-          <button
-            onClick={handleLogout}
-            className="w-full bg-red-500 hover:bg-red-600 mt-10 py-2 rounded-lg text-white font-semibold transition"
-          >
-            {isOpen ? "Logout" : "⏻"}
-          </button>
-        </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 p-10 flex flex-col gap-10">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="text-3xl font-bold text-blue-700"
-          >
-            ☰
-          </button>
+      {/* MAIN */}
+      <main className="flex-1 p-10 space-y-6">
+        <h1 className="text-3xl font-bold">Welcome {userData?.name}</h1>
 
-          <h1 className="text-4xl font-extrabold text-gray-800 tracking-tight">
-            Welcome,{" "}
-            <span className="text-blue-700">
-              {userData ? userData.name : "Loading..."}
-            </span>{" "}
-            👋
-          </h1>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-8">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 shadow-xl p-6 rounded-2xl text-white flex flex-col items-center justify-center hover:scale-105 transition">
-            <h3 className="text-lg font-semibold opacity-90">Total Rides</h3>
-            <p className="text-4xl font-bold mt-2">{stats.total}</p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-blue-600 text-white p-4 rounded">
+            Total {stats.total}
           </div>
-
-          <div className="bg-gradient-to-br from-yellow-400 to-yellow-500 shadow-xl p-6 rounded-2xl text-white flex flex-col items-center justify-center hover:scale-105 transition">
-            <h3 className="text-lg font-semibold opacity-90">
-              Pending Requests
-            </h3>
-            <p className="text-4xl font-bold mt-2">{stats.pending}</p>
+          <div className="bg-yellow-500 text-white p-4 rounded">
+            Pending {stats.pending}
           </div>
-
-          <div className="bg-gradient-to-br from-green-500 to-green-600 shadow-xl p-6 rounded-2xl text-white flex flex-col items-center justify-center hover:scale-105 transition">
-            <h3 className="text-lg font-semibold opacity-90">
-              Completed Rides
-            </h3>
-            <p className="text-4xl font-bold mt-2">{stats.completed}</p>
+          <div className="bg-green-600 text-white p-4 rounded">
+            Completed {stats.completed}
           </div>
         </div>
 
-        {/* Map + Booking */}
-        <div className="flex gap-10 flex-1">
-          <div className="flex-1 bg-white rounded-3xl shadow-xl h-[420px] flex items-center justify-center border border-gray-200">
-            <p className="text-gray-500 font-medium">🗺 Map will go here</p>
+        {distance && duration && (
+          <div className="bg-white p-4 rounded shadow">
+            📏 {distance} km | ⏱ {duration} mins
+          </div>
+        )}
+
+        <div className="flex gap-6">
+          <div className="flex-1 h-[420px] bg-white rounded shadow">
+            <MapContainer
+              center={{ lat: 20.5937, lng: 78.9629 }}
+              zoom={6}
+              style={{ height: "100%" }}
+            >
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              {pickupCoords && <Marker position={pickupCoords} />}
+              {dropCoords && <Marker position={dropCoords} />}
+              {routeCoords.length > 0 && (
+                <>
+                  <Polyline positions={routeCoords} color="blue" />
+                  <FitRoute coords={routeCoords} />
+                </>
+              )}
+            </MapContainer>
           </div>
 
-          <div className="w-96 bg-white shadow-xl rounded-3xl p-6 flex flex-col gap-5 border border-gray-200">
-            <h2 className="text-2xl font-bold text-gray-700 mb-2">
-              Book a Ride
-            </h2>
-
+          <div className="w-96 bg-white p-6 rounded shadow space-y-4">
             <input
-              type="text"
-              placeholder="📍 Pickup Location"
+              placeholder="Pickup"
+              className="border p-2 w-full"
               value={pickup}
-              onChange={(e) => setPickup(e.target.value)}
-              className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                setPickup(e.target.value);
+                getCoordinates(e.target.value, setPickupCoords);
+              }}
             />
-
             <input
-              type="text"
-              placeholder="🏁 Drop-off Location"
+              placeholder="Drop"
+              className="border p-2 w-full"
               value={drop}
-              onChange={(e) => setDrop(e.target.value)}
-              className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                setDrop(e.target.value);
+                getCoordinates(e.target.value, setDropCoords);
+              }}
             />
-
             <input
               type="datetime-local"
+              className="border p-2 w-full"
               value={dateTime}
               onChange={(e) => setDateTime(e.target.value)}
-              className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-
-            <button
-              onClick={handleBooking}
-              className="bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
-            >
+            <button className="bg-blue-600 text-white py-2 w-full rounded">
               Confirm Booking
             </button>
           </div>
@@ -213,5 +212,3 @@ function Dashboard() {
     </div>
   );
 }
-
-export default Dashboard;
