@@ -10,10 +10,14 @@ app.use(express.json());
 // Routes
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
+const rideRoutes = require("./routes/rides");
+
+
 
 
 app.use("/api/auth", authRoutes); // Register/Login
 app.use("/api/users", userRoutes); // CRUD operations
+app.use("/api/rides", rideRoutes);
 
 
 // Health check endpoint
