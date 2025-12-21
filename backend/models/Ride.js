@@ -24,6 +24,11 @@ const RideSchema = new mongoose.Schema(
       enum: ["pending", "completed"],
       default: "pending",
     },
+    type: {
+      type: String,
+      enum: ["poolCar", "findCar"], // poolCar = offering a ride, findCar = looking for a ride
+      required: true,
+    },
   },
   { timestamps: true }
 );

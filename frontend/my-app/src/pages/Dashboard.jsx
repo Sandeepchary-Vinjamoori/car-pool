@@ -53,6 +53,8 @@ export default function Dashboard() {
   const [routeCoords, setRouteCoords] = useState([]);
   const [distance, setDistance] = useState(null);
   const [duration, setDuration] = useState(null);
+  const [rideType, setRideType] = useState(null); // "poolCar" or "findCar"
+  const [pendingRides, setPendingRides] = useState([]);
 
   // Auth
   useEffect(() => {
@@ -66,6 +68,7 @@ export default function Dashboard() {
       .then((res) => setUserData(res.data));
 
     fetchStats();
+    fetchPendingRides();
   }, [navigate]);
 
   const fetchStats = async () => {
@@ -76,42 +79,73 @@ export default function Dashboard() {
     setStats(res.data);
   };
 
+  const fetchPendingRides = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get("/api/rides/my", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      // Filter only pending rides and sort by most recent
+      const pending = res.data
+        .filter((ride) => ride.status === "pending")
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setPendingRides(pending);
+    } catch (err) {
+      console.error("Error fetching pending rides:", err);
+    }
+  };
+
   // Geocoding
   const getCoordinates = async (address, setter) => {
     if (!address || address.length < 3) return;
 
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-        address
-      )}`
-    );
-    const data = await res.json();
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          address
+        )}`
+      );
 
-    if (data.length) {
-      setter({
-        lat: Number(data[0].lat),
-        lng: Number(data[0].lon),
-      });
+      if (!res.ok) {
+        console.error("Geocoding HTTP error:", res.status, res.statusText);
+        return;
+      }
+
+      const data = await res.json();
+
+      if (data.length) {
+        setter({
+          lat: Number(data[0].lat),
+          lng: Number(data[0].lon),
+        });
+      }
+    } catch (err) {
+      console.error("Geocoding request failed:", err);
     }
   };
 
   // ROUTE (via backend)
   const fetchRoute = async (start, end) => {
-    const token = localStorage.getItem("token");
+    try {
+      const token = localStorage.getItem("token");
 
-    const res = await axios.post(
-      "/api/rides/route",
-      { start, end },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+      const res = await axios.post(
+        "/api/rides/route",
+        { start, end },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-    const route = res.data;
+      const route = res.data;
 
-    setRouteCoords(
-      route.geometry.coordinates.map(([lng, lat]) => [lat, lng])
-    );
-    setDistance((route.distance / 1000).toFixed(2));
-    setDuration(Math.round(route.duration / 60));
+      setRouteCoords(
+        route.geometry.coordinates.map(([lng, lat]) => [lat, lng])
+      );
+      setDistance((route.distance / 1000).toFixed(2));
+      setDuration(Math.round(route.duration / 60));
+    } catch (err) {
+      console.error("Route fetch error:", err.response?.data || err.message);
+      // Don't show error to user, just log it - route will simply not be displayed
+    }
   };
 
   useEffect(() => {
@@ -119,6 +153,79 @@ export default function Dashboard() {
       fetchRoute(pickupCoords, dropCoords);
     }
   }, [pickupCoords, dropCoords]);
+
+  // Handle booking
+  const handleBooking = async (type) => {
+    if (!pickup || !drop || !dateTime) {
+      alert("Please fill in all fields");
+      return;
+    }
+
+    if (!pickupCoords || !dropCoords) {
+      alert("Please wait for the addresses to be resolved on the map");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      await axios.post(
+        "/api/rides/book",
+        {
+          pickup,
+          drop,
+          dateTime,
+          type,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      alert(type === "poolCar" ? "Ride pooled successfully!" : "Looking for a car - ride booked!");
+      
+      // Reset form
+      setPickup("");
+      setDrop("");
+      setDateTime("");
+      setPickupCoords(null);
+      setDropCoords(null);
+      setRouteCoords([]);
+      setDistance(null);
+      setDuration(null);
+      setRideType(null);
+
+      // Refresh stats and pending rides
+      fetchStats();
+      fetchPendingRides();
+    } catch (err) {
+      console.error("Booking error:", err);
+      alert(err.response?.data?.message || "Failed to book ride");
+    }
+  };
+
+  // Handle ending a ride
+  const handleEndRide = async (rideId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.put(
+        `/api/rides/${rideId}/complete`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      alert("Ride completed successfully!");
+      
+      // Refresh stats and pending rides
+      fetchStats();
+      fetchPendingRides();
+    } catch (err) {
+      console.error("End ride error:", err);
+      const errorMessage = err.response?.data?.message || err.message || "Failed to complete ride";
+      alert(`Failed to end ride: ${errorMessage}`);
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-blue-50">
@@ -153,9 +260,47 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* End Ride Button - Show if there are pending rides */}
+        {pendingRides.length > 0 && (
+          <div className="bg-white p-6 rounded shadow-lg border-2 border-green-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 mb-2">
+                  Active Ride
+                </h2>
+                <p className="text-gray-600">
+                  <strong>From:</strong> {pendingRides[0].pickup}
+                </p>
+                <p className="text-gray-600">
+                  <strong>To:</strong> {pendingRides[0].drop}
+                </p>
+                <p className="text-gray-600">
+                  <strong>Date:</strong>{" "}
+                  {new Date(pendingRides[0].dateTime).toLocaleString()}
+                </p>
+                <span className={`inline-block mt-2 px-3 py-1 rounded text-sm font-semibold ${
+                  pendingRides[0].type === "poolCar"
+                    ? "bg-green-100 text-green-800"
+                    : "bg-purple-100 text-purple-800"
+                }`}>
+                  {pendingRides[0].type === "poolCar" ? "🚗 Pooling Car" : "🔍 Finding Car"}
+                </span>
+              </div>
+              <button
+                onClick={() => handleEndRide(pendingRides[0]._id)}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-lg shadow-md transition"
+              >
+                End Ride
+              </button>
+            </div>
+          </div>
+        )}
+
         {distance && duration && (
-          <div className="bg-white p-4 rounded shadow">
-            📏 {distance} km | ⏱ {duration} mins
+          <div className="bg-white p-4 rounded shadow flex items-center gap-3">
+            <span className="text-lg">🧭 Trip summary:</span>
+            <span className="font-semibold">📏 {distance} km</span>
+            <span className="font-semibold">⏱ {duration} mins</span>
           </div>
         )}
 
@@ -171,7 +316,10 @@ export default function Dashboard() {
               {dropCoords && <Marker position={dropCoords} />}
               {routeCoords.length > 0 && (
                 <>
-                  <Polyline positions={routeCoords} color="blue" />
+                  <Polyline
+                    positions={routeCoords}
+                    pathOptions={{ color: "#2563eb", weight: 5, opacity: 0.9 }}
+                  />
                   <FitRoute coords={routeCoords} />
                 </>
               )}
@@ -199,13 +347,36 @@ export default function Dashboard() {
             />
             <input
               type="datetime-local"
-              className="border p-2 w-full"
+              className="border p-2 w-full rounded"
               value={dateTime}
               onChange={(e) => setDateTime(e.target.value)}
             />
-            <button className="bg-blue-600 text-white py-2 w-full rounded">
-              Confirm Booking
-            </button>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleBooking("poolCar")}
+                className={`w-full py-3 rounded font-semibold transition ${
+                  rideType === "poolCar"
+                    ? "bg-green-600 text-white"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+                }`}
+                onMouseEnter={() => setRideType("poolCar")}
+                onMouseLeave={() => setRideType(null)}
+              >
+                🚗 Pool My Car
+              </button>
+              <button
+                onClick={() => handleBooking("findCar")}
+                className={`w-full py-3 rounded font-semibold transition ${
+                  rideType === "findCar"
+                    ? "bg-purple-600 text-white"
+                    : "bg-indigo-600 text-white hover:bg-indigo-700"
+                }`}
+                onMouseEnter={() => setRideType("findCar")}
+                onMouseLeave={() => setRideType(null)}
+              >
+                🔍 Find a Car
+              </button>
+            </div>
           </div>
         </div>
       </main>

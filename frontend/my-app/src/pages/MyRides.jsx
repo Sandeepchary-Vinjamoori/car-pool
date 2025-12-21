@@ -83,6 +83,15 @@ function MyRides() {
                   <strong>Date:</strong>{" "}
                   {new Date(ride.dateTime).toLocaleString()}
                 </p>
+                <p className="mt-1">
+                  <span className={`text-sm px-2 py-1 rounded ${
+                    ride.type === "poolCar" 
+                      ? "bg-green-100 text-green-800" 
+                      : "bg-purple-100 text-purple-800"
+                  }`}>
+                    {ride.type === "poolCar" ? "🚗 Pooling Car" : "🔍 Finding Car"}
+                  </span>
+                </p>
               </div>
 
               <div className="flex items-center gap-3">
@@ -100,14 +109,14 @@ function MyRides() {
                   <>
                     <button
                       onClick={() => markCompleted(ride._id)}
-                      className="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700 transition"
+                      className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition font-semibold"
                     >
-                      Mark Completed
+                      End Ride
                     </button>
 
                     <button
                       onClick={() => cancelRide(ride._id)}
-                      className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600 transition"
+                      className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition font-semibold"
                     >
                       Cancel
                     </button>
