@@ -138,7 +138,7 @@ router.post("/route", auth, async (req, res) => {
 
 // -------------------- BOOK --------------------
 router.post("/book", auth, async (req, res) => {
-  const { pickup, drop, dateTime, type } = req.body;
+  const { pickup, drop, dateTime, type, isScheduled } = req.body;
 
   if (!pickup || !drop || !dateTime || !type) {
     return res.status(400).json({ message: "All fields required" });
@@ -148,6 +148,18 @@ router.post("/book", auth, async (req, res) => {
     return res.status(400).json({ message: "Type must be 'poolCar' or 'findCar'" });
   }
 
+  // Validate scheduled rides have future date/time
+  if (isScheduled) {
+    const selectedDateTime = new Date(dateTime);
+    const now = new Date();
+    
+    if (selectedDateTime <= now) {
+      return res.status(400).json({ 
+        message: "Scheduled rides must be set for a future date and time" 
+      });
+    }
+  }
+
   const ride = new Ride({
     user: req.user.id,
     pickup,
@@ -155,10 +167,16 @@ router.post("/book", auth, async (req, res) => {
     dateTime,
     type,
     status: "pending",
+    isScheduled: isScheduled || false, // Add this field to track booking type
   });
 
   await ride.save();
-  res.json({ message: "Ride booked", ride });
+  
+  const message = isScheduled 
+    ? `Ride scheduled successfully for ${new Date(dateTime).toLocaleString()}`
+    : "Ride booked and starting now";
+    
+  res.json({ message, ride });
 });
 
 // -------------------- STATS --------------------

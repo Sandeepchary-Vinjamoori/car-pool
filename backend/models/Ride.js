@@ -29,6 +29,10 @@ const RideSchema = new mongoose.Schema(
       enum: ["poolCar", "findCar"], // poolCar = offering a ride, findCar = looking for a ride
       required: true,
     },
+    isScheduled: {
+      type: Boolean,
+      default: false, // false = immediate booking, true = scheduled for later
+    },
   },
   { timestamps: true }
 );

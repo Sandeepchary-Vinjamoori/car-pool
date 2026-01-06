@@ -91,6 +91,16 @@ function MyRides() {
                   }`}>
                     {ride.type === "poolCar" ? "🚗 Pooling Car" : "🔍 Finding Car"}
                   </span>
+                  {ride.isScheduled && (
+                    <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-800">
+                      📅 Scheduled
+                    </span>
+                  )}
+                  {!ride.isScheduled && (
+                    <span className="ml-2 text-xs px-2 py-1 rounded bg-orange-100 text-orange-800">
+                      ⚡ Immediate
+                    </span>
+                  )}
                 </p>
               </div>
 
