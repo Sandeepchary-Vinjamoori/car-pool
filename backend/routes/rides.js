@@ -1,24 +1,35 @@
 const express = require("express");
 const router = express.Router();
-const mongoose = require("mongoose");
 const Ride = require("../models/Ride");
 const jwt = require("jsonwebtoken");
+const axios = require("axios");
+const mongoose = require("mongoose");
 
-// -------------------- GOOGLE MAPS HELPERS --------------------
-// Decode an encoded polyline string from Google Directions API into [lng, lat] pairs
+// ---------------- AUTH MIDDLEWARE ----------------
+const auth = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ msg: "No token" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded.id; // store the user id
+    next();
+  } catch {
+    return res.status(401).json({ msg: "Invalid token" });
+  }
+};
+
+// ----------------------------------------------------------
+// POLYLINE DECODER
+// ----------------------------------------------------------
 function decodePolyline(encoded) {
-  if (!encoded) return [];
+  let index = 0,
+    lat = 0,
+    lng = 0,
+    coordinates = [];
 
-  let index = 0;
-  const len = encoded.length;
-  const coordinates = [];
-  let lat = 0;
-  let lng = 0;
-
-  while (index < len) {
-    let b;
-    let shift = 0;
-    let result = 0;
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0;
 
     do {
       b = encoded.charCodeAt(index++) - 63;
@@ -26,7 +37,7 @@ function decodePolyline(encoded) {
       shift += 5;
     } while (b >= 0x20);
 
-    const dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
+    const dlat = result & 1 ? ~(result >> 1) : result >> 1;
     lat += dlat;
 
     shift = 0;
@@ -38,204 +49,185 @@ function decodePolyline(encoded) {
       shift += 5;
     } while (b >= 0x20);
 
-    const dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
+    const dlng = result & 1 ? ~(result >> 1) : result >> 1;
     lng += dlng;
 
-    // Google encodes coordinates in 1e-5 degrees
-    coordinates.push([lng / 1e5, lat / 1e5]); // [lng, lat]
+    coordinates.push([lat / 1e5, lng / 1e5]);
   }
 
   return coordinates;
 }
 
-// -------------------- AUTH --------------------
-const auth = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "No token" });
-
-  try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
-    next();
-  } catch {
-    res.status(401).json({ message: "Invalid token" });
-  }
-};
-
-// -------------------- ROUTE API (FIXED) --------------------
+// ----------------------------------------------------------
+// ROUTE FETCH (GOOGLE → OSRM fallback)
+// ----------------------------------------------------------
 router.post("/route", auth, async (req, res) => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-
   try {
     const { start, end } = req.body;
 
     if (!start || !end) {
-      return res.status(400).json({ message: "Start & end required" });
+      return res.status(400).json({ msg: "Missing coordinates" });
     }
 
-    // Try Google Maps API first if key is available
-    if (apiKey) {
-      try {
-        const origin = `${start.lat},${start.lng}`;
-        const destination = `${end.lat},${end.lng}`;
-
-        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(
-          origin
-        )}&destination=${encodeURIComponent(
-          destination
-        )}&mode=driving&key=${apiKey}`;
-
-        const response = await fetch(url);
-        const data = await response.json();
-
-        if (data.status === "OK" && data.routes && data.routes.length > 0) {
-          const route = data.routes[0];
-          const leg = route.legs && route.legs[0];
-
-          if (leg && route.overview_polyline) {
-            const coordinates = decodePolyline(route.overview_polyline.points);
-
-            return res.json({
-              distance: leg.distance.value, // meters
-              duration: leg.duration.value, // seconds
-              geometry: {
-                coordinates, // [lng, lat] pairs
-              },
-            });
-          }
+    // ---------------- GOOGLE ROUTES ----------------
+    try {
+      const googleRes = await axios.post(
+        "https://routes.googleapis.com/directions/v2:computeRoutes",
+        {
+          origin: { location: { latLng: start } },
+          destination: { location: { latLng: end } },
+          travelMode: "DRIVE",
+          routingPreference: "TRAFFIC_AWARE",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": process.env.GOOGLE_MAPS_API,
+            "X-Goog-FieldMask":
+              "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline",
+          },
         }
-        console.log("Google Maps API failed, falling back to OSRM");
-      } catch (googleErr) {
-        console.log("Google Maps API error, falling back to OSRM:", googleErr.message);
-      }
-    } else {
-      console.log("No Google Maps API key, using OSRM");
+      );
+
+      const route = googleRes.data.routes[0];
+      const decoded = decodePolyline(route.polyline.encodedPolyline);
+
+      return res.json({
+        geometry: {
+          coordinates: decoded.map((p) => [p[1], p[0]]), // lng, lat
+        },
+        distance: route.distanceMeters,
+        duration: parseInt(route.duration.replace("s", "")),
+      });
+    } catch (e) {
+      console.log("Google Maps failed → Using OSRM");
     }
 
-    // Fallback to OSRM (free routing service)
-    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+    // ---------------- OSRM FALLBACK ----------------
+    const osrm = await axios.get(
+      `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
+    );
 
-    const response = await fetch(osrmUrl);
-    const data = await response.json();
+    const r = osrm.data.routes[0];
 
-    if (!data.routes || data.routes.length === 0) {
-      return res.status(404).json({ message: "No route found" });
-    }
-
-    const route = data.routes[0];
-    
-    res.json({
-      distance: route.distance, // meters
-      duration: route.duration, // seconds
-      geometry: {
-        coordinates: route.geometry.coordinates, // [lng, lat] pairs
-      },
+    return res.json({
+      geometry: { coordinates: r.geometry.coordinates },
+      distance: r.distance,
+      duration: r.duration,
     });
   } catch (err) {
-    console.error("Route API error:", err);
-    res.status(500).json({ message: "Route fetch failed: " + err.message });
+    console.log("Route API error:", err);
+    return res.status(500).json({ msg: "Route fetch failed" });
   }
 });
 
-// -------------------- BOOK --------------------
+// ----------------------------------------------------------
+// BOOK RIDE (POOL / FIND)
+// ----------------------------------------------------------
 router.post("/book", auth, async (req, res) => {
-  const { pickup, drop, dateTime, type, isScheduled } = req.body;
+  try {
+    const { pickup, drop, dateTime, type, isScheduled } = req.body;
 
-  if (!pickup || !drop || !dateTime || !type) {
-    return res.status(400).json({ message: "All fields required" });
-  }
-
-  if (!["poolCar", "findCar"].includes(type)) {
-    return res.status(400).json({ message: "Type must be 'poolCar' or 'findCar'" });
-  }
-
-  // Validate scheduled rides have future date/time
-  if (isScheduled) {
-    const selectedDateTime = new Date(dateTime);
-    const now = new Date();
-    
-    if (selectedDateTime <= now) {
-      return res.status(400).json({ 
-        message: "Scheduled rides must be set for a future date and time" 
-      });
+    if (!pickup || !drop || !dateTime || !type) {
+      return res.status(400).json({ message: "All fields required" });
     }
-  }
 
-  const ride = new Ride({
-    user: req.user.id,
-    pickup,
-    drop,
-    dateTime,
-    type,
-    status: "pending",
-    isScheduled: isScheduled || false, // Add this field to track booking type
-  });
+    if (!["poolCar", "findCar"].includes(type)) {
+      return res.status(400).json({ message: "Type must be 'poolCar' or 'findCar'" });
+    }
 
-  await ride.save();
-  
-  const message = isScheduled 
-    ? `Ride scheduled successfully for ${new Date(dateTime).toLocaleString()}`
-    : "Ride booked and starting now";
+    // Validate scheduled rides have future date/time
+    if (isScheduled) {
+      const selectedDateTime = new Date(dateTime);
+      const now = new Date();
+      
+      if (selectedDateTime <= now) {
+        return res.status(400).json({ 
+          message: "Scheduled rides must be set for a future date and time" 
+        });
+      }
+    }
+
+    const ride = await Ride.create({
+      user: req.user,
+      pickup,
+      drop,
+      dateTime,
+      type,
+      status: "pending",
+      isScheduled: isScheduled || false, // Add this field to track booking type
+    });
     
-  res.json({ message, ride });
+    const message = isScheduled 
+      ? `Ride scheduled successfully for ${new Date(dateTime).toLocaleString()}`
+      : "Ride booked and starting now";
+      
+    res.json({ message, ride });
+  } catch (err) {
+    console.log("Booking error:", err);
+    res.status(400).json({ msg: "Booking failed" });
+  }
 });
 
-// -------------------- STATS --------------------
-router.get("/stats", auth, async (req, res) => {
-  const total = await Ride.countDocuments({ user: req.user.id });
-  const pending = await Ride.countDocuments({
-    user: req.user.id,
-    status: "pending",
-  });
-  const completed = await Ride.countDocuments({
-    user: req.user.id,
-    status: "completed",
-  });
-
-  res.json({ total, pending, completed });
-});
-
-// -------------------- MY RIDES --------------------
+// ----------------------------------------------------------
+// GET MY RIDES
+// ----------------------------------------------------------
 router.get("/my", auth, async (req, res) => {
-  const rides = await Ride.find({ user: req.user.id }).sort({ createdAt: -1 });
+  const rides = await Ride.find({ user: req.user }).sort({ dateTime: -1 });
   res.json(rides);
 });
 
-// -------------------- COMPLETE RIDE --------------------
+// ----------------------------------------------------------
+// STATS
+// ----------------------------------------------------------
+router.get("/stats", auth, async (req, res) => {
+  const rides = await Ride.find({ user: req.user });
+
+  res.json({
+    total: rides.length,
+    pending: rides.filter((r) => r.status === "pending").length,
+    completed: rides.filter((r) => r.status === "completed").length,
+  });
+});
+
+// ----------------------------------------------------------
+// COMPLETE A RIDE
+// ----------------------------------------------------------
 router.put("/:id/complete", auth, async (req, res) => {
   try {
-    const rideId = req.params.id;
-    
-    // Validate ObjectId format
-    if (!mongoose.Types.ObjectId.isValid(rideId)) {
-      return res.status(400).json({ message: "Invalid ride ID format" });
-    }
-
-    // Find and update in one operation
-    const ride = await Ride.findOneAndUpdate(
-      { _id: rideId, user: req.user.id, status: "pending" },
+    const updated = await Ride.findOneAndUpdate(
+      { _id: req.params.id, user: req.user },
       { status: "completed" },
-      { new: true, runValidators: true }
+      { new: true }
     );
-    
-    if (!ride) {
-      // Check if ride exists but belongs to different user or is already completed
-      const existingRide = await Ride.findById(rideId);
-      if (!existingRide) {
-        return res.status(404).json({ message: "Ride not found" });
-      }
-      if (existingRide.user.toString() !== req.user.id) {
-        return res.status(403).json({ message: "You don't have permission to complete this ride" });
-      }
-      if (existingRide.status === "completed") {
-        return res.status(400).json({ message: "Ride already completed" });
-      }
-      return res.status(400).json({ message: "Cannot complete ride" });
+
+    if (!updated)
+      return res.status(404).json({ msg: "Ride not found" });
+
+    res.json({ msg: "Ride completed" });
+  } catch (err) {
+    res.status(400).json({ msg: "Failed to complete ride" });
+  }
+});
+
+// ----------------------------------------------------------
+// CANCEL A RIDE  (FULL FIX APPLIED)
+// ----------------------------------------------------------
+router.delete("/:id", auth, async (req, res) => {
+  try {
+    const deleted = await Ride.findOneAndDelete({
+      _id: new mongoose.Types.ObjectId(req.params.id),
+      user: req.user
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ msg: "Ride not found" });
     }
 
-    res.json({ message: "Ride marked as completed", ride });
+    res.json({ msg: "Ride cancelled successfully" });
   } catch (err) {
-    console.error("Complete ride error:", err);
-    res.status(500).json({ message: "Failed to complete ride: " + err.message });
+    console.log("Cancel error:", err);
+    res.status(500).json({ msg: "Failed to cancel ride" });
   }
 });
 

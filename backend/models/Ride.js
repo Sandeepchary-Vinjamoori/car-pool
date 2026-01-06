@@ -7,26 +7,19 @@ const RideSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    pickup: {
-      type: String,
-      required: true,
-    },
-    drop: {
-      type: String,
-      required: true,
-    },
-    dateTime: {
-      type: Date,
-      required: true,
-    },
+    pickup: { type: String, required: true },
+    drop: { type: String, required: true },
+    dateTime: { type: Date, required: true },
+
     status: {
       type: String,
       enum: ["pending", "completed"],
       default: "pending",
     },
+
     type: {
       type: String,
-      enum: ["poolCar", "findCar"], // poolCar = offering a ride, findCar = looking for a ride
+      enum: ["poolCar", "findCar"],
       required: true,
     },
     isScheduled: {

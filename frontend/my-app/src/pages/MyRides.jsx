@@ -46,20 +46,23 @@ function MyRides() {
     }
   };
 
-  // ❌ Cancel ride
+  // ❌ Cancel ride (FIXED ENDPOINT)
   const cancelRide = async (id) => {
     if (!window.confirm("Are you sure you want to cancel this ride?")) return;
 
     try {
       const token = localStorage.getItem("token");
 
-      await axios.delete(`/api/rides/${id}`, {
+      // ⭐ FIXED: must call /cancel route
+      await axios.delete(`/api/rides/${id}/cancel`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       fetchRides();
     } catch (err) {
-      alert("Failed to cancel ride");
+      const msg =
+        err.response?.data?.message || "Failed to cancel ride";
+      alert(msg);
     }
   };
 
@@ -84,12 +87,16 @@ function MyRides() {
                   {new Date(ride.dateTime).toLocaleString()}
                 </p>
                 <p className="mt-1">
-                  <span className={`text-sm px-2 py-1 rounded ${
-                    ride.type === "poolCar" 
-                      ? "bg-green-100 text-green-800" 
-                      : "bg-purple-100 text-purple-800"
-                  }`}>
-                    {ride.type === "poolCar" ? "🚗 Pooling Car" : "🔍 Finding Car"}
+                  <span
+                    className={`text-sm px-2 py-1 rounded ${
+                      ride.type === "poolCar"
+                        ? "bg-green-100 text-green-800"
+                        : "bg-purple-100 text-purple-800"
+                    }`}
+                  >
+                    {ride.type === "poolCar"
+                      ? "🚗 Pooling Car"
+                      : "🔍 Finding Car"}
                   </span>
                   {ride.isScheduled && (
                     <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-800">

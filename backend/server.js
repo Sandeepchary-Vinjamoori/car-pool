@@ -18,6 +18,8 @@ const rideRoutes = require("./routes/rides");
 app.use("/api/auth", authRoutes); // Register/Login
 app.use("/api/users", userRoutes); // CRUD operations
 app.use("/api/rides", rideRoutes);
+app.use("/api/rides", require("./routes/rides"));
+
 
 
 // Health check endpoint
