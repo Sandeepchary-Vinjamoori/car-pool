@@ -319,6 +319,32 @@ export default function Dashboard() {
       lng: locationData.lng
     });
   };
+const handleUseMyLocation = () => {
+  if (!navigator.geolocation) {
+    alert("Geolocation is not supported by your browser");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      try {
+        const res = await axios.get(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+        );
+
+        const address = res.data.display_name;
+        setPickup(address);
+        setPickupCoords({ lat, lng });
+      } catch (err) {
+        alert("Unable to fetch address");
+      }
+    },
+    () => alert("Location access denied")
+  );
+};
 
   // Handle drop location selection  
   const handleDropSelect = (locationData) => {
@@ -535,9 +561,18 @@ export default function Dashboard() {
 
           <div className="w-96 bg-white p-6 rounded shadow space-y-4">
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
-                📍 Pickup Location
-              </label>
+              <div className="flex items-center justify-between">
+  <label className="block text-sm font-medium text-gray-700">
+    📍 Pickup Location
+  </label>
+  <span
+    onClick={handleUseMyLocation}
+    className="text-blue-600 text-sm cursor-pointer hover:underline"
+  >
+    Use my location
+  </span>
+</div>
+
               <LocationAutocomplete
                 value={pickup}
                 onChange={setPickup}
