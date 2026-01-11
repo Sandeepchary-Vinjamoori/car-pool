@@ -140,10 +140,10 @@ router.post("/book", auth, async (req, res) => {
     if (isScheduled) {
       const selectedDateTime = new Date(dateTime);
       const now = new Date();
-      
+
       if (selectedDateTime <= now) {
-        return res.status(400).json({ 
-          message: "Scheduled rides must be set for a future date and time" 
+        return res.status(400).json({
+          message: "Scheduled rides must be set for a future date and time",
         });
       }
     }
@@ -155,13 +155,13 @@ router.post("/book", auth, async (req, res) => {
       dateTime,
       type,
       status: "pending",
-      isScheduled: isScheduled || false, // Add this field to track booking type
+      isScheduled: isScheduled || false,
     });
-    
-    const message = isScheduled 
+
+    const message = isScheduled
       ? `Ride scheduled successfully for ${new Date(dateTime).toLocaleString()}`
       : "Ride booked and starting now";
-      
+
     res.json({ message, ride });
   } catch (err) {
     console.log("Booking error:", err);
@@ -211,18 +211,30 @@ router.put("/:id/complete", auth, async (req, res) => {
 });
 
 // ----------------------------------------------------------
-// CANCEL A RIDE  (FULL FIX APPLIED)
+// CANCEL A RIDE (FIXED PROPERLY)
 // ----------------------------------------------------------
 router.delete("/:id", auth, async (req, res) => {
   try {
-    const deleted = await Ride.findOneAndDelete({
-      _id: new mongoose.Types.ObjectId(req.params.id),
-      user: req.user
-    });
+    const { id } = req.params;
 
-    if (!deleted) {
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ msg: "Invalid ride ID" });
+    }
+
+    // Find ride
+    const ride = await Ride.findById(id);
+    if (!ride) {
       return res.status(404).json({ msg: "Ride not found" });
     }
+
+    // Check ownership
+    if (ride.user.toString() !== req.user) {
+      return res.status(403).json({ msg: "Not authorized to cancel this ride" });
+    }
+
+    // Delete ride
+    await Ride.findByIdAndDelete(id);
 
     res.json({ msg: "Ride cancelled successfully" });
   } catch (err) {

@@ -46,23 +46,22 @@ function MyRides() {
     }
   };
 
-  // ❌ Cancel ride (FIXED ENDPOINT)
-  const cancelRide = async (id) => {
-    if (!window.confirm("Are you sure you want to cancel this ride?")) return;
-
+  // ❌ Cancel ride (FIXED)
+  const handleCancelRide = async (id) => {
     try {
       const token = localStorage.getItem("token");
 
-      // ⭐ FIXED: must call /cancel route
-      await axios.delete(`/api/rides/${id}/cancel`, {
+      await axios.delete(`/api/rides/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
+      alert("Ride cancelled successfully");
+
+      // Refresh rides list
       fetchRides();
     } catch (err) {
-      const msg =
-        err.response?.data?.message || "Failed to cancel ride";
-      alert(msg);
+      console.error("Cancel ride error:", err);
+      alert("Failed to cancel ride");
     }
   };
 
@@ -132,7 +131,7 @@ function MyRides() {
                     </button>
 
                     <button
-                      onClick={() => cancelRide(ride._id)}
+                      onClick={() => handleCancelRide(ride._id)}
                       className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition font-semibold"
                     >
                       Cancel
