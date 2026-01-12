@@ -205,6 +205,7 @@ export default function Dashboard() {
   const [duration, setDuration] = useState(null);
   const [rideType, setRideType] = useState(null); // "poolCar" or "findCar"
   const [pendingRides, setPendingRides] = useState([]);
+  const [nearbyRides, setNearbyRides] = useState([]);
 
   // Auth
   useEffect(() => {
@@ -319,32 +320,33 @@ export default function Dashboard() {
       lng: locationData.lng
     });
   };
-const handleUseMyLocation = () => {
-  if (!navigator.geolocation) {
-    alert("Geolocation is not supported by your browser");
-    return;
-  }
 
-  navigator.geolocation.getCurrentPosition(
-    async (position) => {
-      const lat = position.coords.latitude;
-      const lng = position.coords.longitude;
+  const handleUseMyLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
 
-      try {
-        const res = await axios.get(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
-        );
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
 
-        const address = res.data.display_name;
-        setPickup(address);
-        setPickupCoords({ lat, lng });
-      } catch (err) {
-        alert("Unable to fetch address");
-      }
-    },
-    () => alert("Location access denied")
-  );
-};
+        try {
+          const res = await axios.get(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+          );
+
+          const address = res.data.display_name;
+          setPickup(address);
+          setPickupCoords({ lat, lng });
+        } catch (err) {
+          alert("Unable to fetch address");
+        }
+      },
+      () => alert("Location access denied")
+    );
+  };
 
   // Handle drop location selection  
   const handleDropSelect = (locationData) => {
@@ -395,7 +397,8 @@ const handleUseMyLocation = () => {
           drop,
           dateTime: rideDateTime,
           type,
-          isScheduled, // Add this flag to help backend understand booking type
+          isScheduled,
+          pickupCoords, // Add this flag to help backend understand booking type
         },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -452,6 +455,38 @@ const handleUseMyLocation = () => {
       console.error("End ride error:", err);
       const errorMessage = err.response?.data?.message || err.message || "Failed to complete ride";
       alert(`Failed to end ride: ${errorMessage}`);
+    }
+  };
+
+  // Find nearby rides function
+  const findNearbyRides = async () => {
+    if (!pickupCoords) {
+      alert("Please select pickup location first");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+
+      const res = await axios.post(
+        "/api/rides/find",
+        {
+          lat: pickupCoords.lat,
+          lng: pickupCoords.lng,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (res.data.length === 0) {
+        alert("No nearby rides found");
+      }
+
+      setNearbyRides(res.data);
+    } catch (err) {
+      console.error("Find rides error:", err);
+      alert("Failed to find nearby rides");
     }
   };
 
@@ -556,22 +591,32 @@ const handleUseMyLocation = () => {
                   <FitRoute coords={routeCoords} />
                 </>
               )}
+              {/* AVAILABLE RIDES ON MAP */}
+              {nearbyRides.map((ride) =>
+                ride.pickupCoords ? (
+                  <Marker
+                    key={ride._id}
+                    position={[ride.pickupCoords.lat, ride.pickupCoords.lng]}
+                    icon={dropIcon}
+                  />
+                ) : null
+              )}
             </MapContainer>
           </div>
 
           <div className="w-96 bg-white p-6 rounded shadow space-y-4">
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-  <label className="block text-sm font-medium text-gray-700">
-    📍 Pickup Location
-  </label>
-  <span
-    onClick={handleUseMyLocation}
-    className="text-blue-600 text-sm cursor-pointer hover:underline"
-  >
-    Use my location
-  </span>
-</div>
+                <label className="block text-sm font-medium text-gray-700">
+                  📍 Pickup Location
+                </label>
+                <span
+                  onClick={handleUseMyLocation}
+                  className="text-blue-600 text-sm cursor-pointer hover:underline"
+                >
+                  Use my location
+                </span>
+              </div>
 
               <LocationAutocomplete
                 value={pickup}
@@ -669,7 +714,7 @@ const handleUseMyLocation = () => {
                 🚗 {isScheduled ? "Schedule Pool" : "Pool Now"}
               </button>
               <button
-                onClick={() => handleBooking("findCar")}
+                 onClick={() => handleBooking("findCar")}
                 disabled={!pickup || !drop || !pickupCoords || !dropCoords}
                 className={`w-full py-3 rounded-md font-semibold transition ${!pickup || !drop || !pickupCoords || !dropCoords
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"

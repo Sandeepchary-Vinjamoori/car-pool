@@ -29,7 +29,9 @@ function decodePolyline(encoded) {
     coordinates = [];
 
   while (index < encoded.length) {
-    let b, shift = 0, result = 0;
+    let b,
+      shift = 0,
+      result = 0;
 
     do {
       b = encoded.charCodeAt(index++) - 63;
@@ -126,14 +128,16 @@ router.post("/route", auth, async (req, res) => {
 // ----------------------------------------------------------
 router.post("/book", auth, async (req, res) => {
   try {
-    const { pickup, drop, dateTime, type, isScheduled } = req.body;
+    const { pickup, drop, dateTime, type, isScheduled, pickupCoords } = req.body;
 
     if (!pickup || !drop || !dateTime || !type) {
       return res.status(400).json({ message: "All fields required" });
     }
 
     if (!["poolCar", "findCar"].includes(type)) {
-      return res.status(400).json({ message: "Type must be 'poolCar' or 'findCar'" });
+      return res
+        .status(400)
+        .json({ message: "Type must be 'poolCar' or 'findCar'" });
     }
 
     // Validate scheduled rides have future date/time
@@ -156,6 +160,7 @@ router.post("/book", auth, async (req, res) => {
       type,
       status: "pending",
       isScheduled: isScheduled || false,
+      pickupCoords: pickupCoords || null, // ⭐ IMPORTANT FOR MAP MATCHING
     });
 
     const message = isScheduled
@@ -211,7 +216,7 @@ router.put("/:id/complete", auth, async (req, res) => {
 });
 
 // ----------------------------------------------------------
-// CANCEL A RIDE (FIXED PROPERLY)
+// CANCEL A RIDE
 // ----------------------------------------------------------
 router.delete("/:id", auth, async (req, res) => {
   try {
@@ -222,25 +227,60 @@ router.delete("/:id", auth, async (req, res) => {
       return res.status(400).json({ msg: "Invalid ride ID" });
     }
 
-    // Find ride
     const ride = await Ride.findById(id);
     if (!ride) {
       return res.status(404).json({ msg: "Ride not found" });
     }
 
-    // Check ownership
     if (ride.user.toString() !== req.user) {
       return res.status(403).json({ msg: "Not authorized to cancel this ride" });
     }
 
-    // Delete ride
     await Ride.findByIdAndDelete(id);
-
     res.json({ msg: "Ride cancelled successfully" });
   } catch (err) {
     console.log("Cancel error:", err);
     res.status(500).json({ msg: "Failed to cancel ride" });
   }
 });
+
+// ----------------------------------------------------------
+// FIND NEARBY RIDES (FOR MAP)
+// ----------------------------------------------------------
+router.post("/find", auth, async (req, res) => {
+  try {
+    const { lat, lng } = req.body;
+
+    if (!lat || !lng) {
+      return res.status(400).json({ msg: "Location required" });
+    }
+
+    // Find only pending rides from other users
+    const rides = await Ride.find({
+      status: "pending",
+      user: { $ne: req.user },
+      pickupCoords: { $ne: null },
+    });
+
+    console.log("ALL OTHER PENDING RIDES:", rides);
+
+    // TEMP: Relax distance filter for testing
+    const nearby = rides.filter((ride) => {
+      const dLat = ride.pickupCoords.lat - lat;
+      const dLng = ride.pickupCoords.lng - lng;
+      const distance = Math.sqrt(dLat * dLat + dLng * dLng);
+
+      return distance <= 1; // 🔧 ~100km radius for testing
+    });
+
+    console.log("NEARBY RIDES:", nearby);
+
+    res.json(nearby);
+  } catch (err) {
+    console.error("Find rides error:", err);
+    res.status(500).json({ msg: "Failed to find nearby rides" });
+  }
+});
+
 
 module.exports = router;

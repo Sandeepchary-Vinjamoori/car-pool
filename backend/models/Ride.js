@@ -7,9 +7,16 @@ const RideSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+
     pickup: { type: String, required: true },
     drop: { type: String, required: true },
     dateTime: { type: Date, required: true },
+
+    // 📍 STORE PICKUP LOCATION COORDINATES FOR MAP & MATCHING
+    pickupCoords: {
+      lat: { type: Number },
+      lng: { type: Number },
+    },
 
     status: {
       type: String,
@@ -22,6 +29,7 @@ const RideSchema = new mongoose.Schema(
       enum: ["poolCar", "findCar"],
       required: true,
     },
+
     isScheduled: {
       type: Boolean,
       default: false, // false = immediate booking, true = scheduled for later
