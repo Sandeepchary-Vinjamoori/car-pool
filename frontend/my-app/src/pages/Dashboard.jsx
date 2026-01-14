@@ -31,6 +31,15 @@ const dropIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
+const availableRideIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
 // Fix marker icons
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -48,6 +57,25 @@ function FitRoute({ coords }) {
   useEffect(() => {
     if (coords.length) map.fitBounds(coords);
   }, [coords, map]);
+  return null;
+}
+
+// Auto fit map to nearby rides
+function FitNearbyRides({ rides }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!rides || rides.length === 0) return;
+
+    const bounds = rides
+      .filter(r => r.pickupCoords?.lat && r.pickupCoords?.lng)
+      .map(r => [r.pickupCoords.lat, r.pickupCoords.lng]);
+
+    if (bounds.length > 0) {
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+  }, [rides, map]);
+
   return null;
 }
 
@@ -313,6 +341,13 @@ export default function Dashboard() {
     }
   }, [pickupCoords, dropCoords]);
 
+  // Auto fetch nearby rides when pickup location changes
+  useEffect(() => {
+    if (pickupCoords) {
+      findNearbyRides();
+    }
+  }, [pickupCoords]);
+
   // Handle pickup location selection
   const handlePickupSelect = (locationData) => {
     setPickupCoords({
@@ -478,7 +513,7 @@ export default function Dashboard() {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-
+      console.log("NEARBY RIDES RESPONSE:", res.data);
       if (res.data.length === 0) {
         alert("No nearby rides found");
       }
@@ -521,6 +556,9 @@ export default function Dashboard() {
             Completed {stats.completed}
           </div>
         </div>
+
+        {/* Debug Check */}
+        <p className="text-sm text-gray-600">Nearby rides count: {nearbyRides.length}</p>
 
         {/* End Ride Button - Show if there are pending rides */}
         {pendingRides.length > 0 && (
@@ -593,14 +631,18 @@ export default function Dashboard() {
               )}
               {/* AVAILABLE RIDES ON MAP */}
               {nearbyRides.map((ride) =>
-                ride.pickupCoords ? (
-                  <Marker
-                    key={ride._id}
-                    position={[ride.pickupCoords.lat, ride.pickupCoords.lng]}
-                    icon={dropIcon}
-                  />
-                ) : null
-              )}
+  ride.pickupCoords?.lat && ride.pickupCoords?.lng ? (
+    <Marker
+      key={ride._id}
+      position={[
+        Number(ride.pickupCoords.lat),
+        Number(ride.pickupCoords.lng)
+      ]}
+      icon={availableRideIcon}
+    />
+  ) : null
+)}
+
             </MapContainer>
           </div>
 
@@ -714,7 +756,7 @@ export default function Dashboard() {
                 🚗 {isScheduled ? "Schedule Pool" : "Pool Now"}
               </button>
               <button
-                 onClick={() => handleBooking("findCar")}
+                onClick={() => handleBooking("findCar")}
                 disabled={!pickup || !drop || !pickupCoords || !dropCoords}
                 className={`w-full py-3 rounded-md font-semibold transition ${!pickup || !drop || !pickupCoords || !dropCoords
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"

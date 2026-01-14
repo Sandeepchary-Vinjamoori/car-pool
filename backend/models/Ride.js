@@ -14,8 +14,14 @@ const RideSchema = new mongoose.Schema(
 
     // 📍 STORE PICKUP LOCATION COORDINATES FOR MAP & MATCHING
     pickupCoords: {
-      lat: { type: Number },
-      lng: { type: Number },
+      lat: {
+        type: Number,
+        required: true,
+      },
+      lng: {
+        type: Number,
+        required: true,
+      },
     },
 
     status: {
