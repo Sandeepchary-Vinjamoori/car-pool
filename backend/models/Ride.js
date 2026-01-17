@@ -10,18 +10,19 @@ const RideSchema = new mongoose.Schema(
 
     pickup: { type: String, required: true },
     drop: { type: String, required: true },
+
     dateTime: { type: Date, required: true },
 
-    // 📍 STORE PICKUP LOCATION COORDINATES FOR MAP & MATCHING
+    // 📍 Pickup location
     pickupCoords: {
-      lat: {
-        type: Number,
-        required: true,
-      },
-      lng: {
-        type: Number,
-        required: true,
-      },
+      lat: { type: Number },
+      lng: { type: Number },
+    },
+
+    // 🎯 Drop location (NEW)
+    dropCoords: {
+      lat: { type: Number },
+      lng: { type: Number },
     },
 
     status: {
@@ -38,7 +39,7 @@ const RideSchema = new mongoose.Schema(
 
     isScheduled: {
       type: Boolean,
-      default: false, // false = immediate booking, true = scheduled for later
+      default: false,
     },
   },
   { timestamps: true }

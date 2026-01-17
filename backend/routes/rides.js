@@ -84,7 +84,7 @@ router.post("/route", auth, async (req, res) => {
 // ----------------------------------------------------------
 router.post("/book", auth, async (req, res) => {
   try {
-    const { pickup, drop, dateTime, type, isScheduled, pickupCoords } = req.body;
+    const { pickup, drop, pickupCoords, dropCoords, dateTime, type, isScheduled } = req.body;
 
     if (!pickup || !drop || !dateTime || !type) {
       return res.status(400).json({ message: "All fields required" });
@@ -93,6 +93,13 @@ router.post("/book", auth, async (req, res) => {
     if (!pickupCoords || !pickupCoords.lat || !pickupCoords.lng) {
       return res.status(400).json({
         message: "Pickup coordinates are required for map & matching",
+      });
+    }
+
+    // ADD DROP COORDS VALIDATION
+    if (!dropCoords || !dropCoords.lat || !dropCoords.lng) {
+      return res.status(400).json({
+        message: "Drop coordinates are required for map & matching",
       });
     }
 
@@ -123,6 +130,11 @@ router.post("/book", auth, async (req, res) => {
       pickupCoords: {
         lat: pickupCoords.lat,
         lng: pickupCoords.lng,
+      },
+      // ADD DROP COORDS TO DATABASE
+      dropCoords: {
+        lat: dropCoords.lat,
+        lng: dropCoords.lng,
       },
     });
 
@@ -178,33 +190,48 @@ router.put("/:id/complete", auth, async (req, res) => {
 });
 
 // ----------------------------------------------------------
-// FIND NEARBY RIDES (FOR MAP)
+// FIND NEARBY RIDES (FOR MAP) - UPDATED WITH PICKUP + DROP MATCHING
 // ----------------------------------------------------------
 router.post("/find", auth, async (req, res) => {
   try {
-    const { lat, lng } = req.body;
+    const { pickup, drop } = req.body;
 
-    if (!lat || !lng) {
-      return res.status(400).json({ msg: "Location required" });
+    if (!pickup || !drop) {
+      return res.status(400).json({ msg: "Pickup and drop required" });
+    }
+
+    if (!pickup.lat || !pickup.lng || !drop.lat || !drop.lng) {
+      return res.status(400).json({ msg: "Invalid coordinates" });
     }
 
     const rides = await Ride.find({
       status: "pending",
       user: { $ne: req.user },
-      pickupCoords: { $exists: true },
-    });
+      pickupCoords: { $ne: null },
+      dropCoords: { $ne: null },
+    }).populate("user", "name email");
 
-    console.log("ALL OTHER PENDING RIDES:", rides);
+    console.log("ALL OTHER PENDING RIDES:", rides.length);
 
     const nearby = rides.filter((ride) => {
-      const dLat = ride.pickupCoords.lat - lat;
-      const dLng = ride.pickupCoords.lng - lng;
-      const distance = Math.sqrt(dLat * dLat + dLng * dLng);
+      // Calculate pickup distance
+      const pickupDistance = Math.sqrt(
+        Math.pow(ride.pickupCoords.lat - pickup.lat, 2) +
+        Math.pow(ride.pickupCoords.lng - pickup.lng, 2)
+      );
 
-      return distance <= 1; // ~100km radius for testing
+      // Calculate drop distance
+      const dropDistance = Math.sqrt(
+        Math.pow(ride.dropCoords.lat - drop.lat, 2) +
+        Math.pow(ride.dropCoords.lng - drop.lng, 2)
+      );
+
+      // Match if BOTH pickup and drop are within tolerance
+      // 0.1 ≈ 10km, 0.2 ≈ 20km (rough approximation)
+      return pickupDistance <= 0.1 && dropDistance <= 0.2;
     });
 
-    console.log("NEARBY RIDES:", nearby);
+    console.log("NEARBY COMPATIBLE RIDES:", nearby.length);
 
     res.json(nearby);
   } catch (err) {

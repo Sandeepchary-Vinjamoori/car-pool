@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { Popup } from "react-leaflet";
+
 import axios from "axios";
 
 import {
@@ -343,10 +345,10 @@ export default function Dashboard() {
 
   // Auto fetch nearby rides when pickup location changes
   useEffect(() => {
-    if (pickupCoords) {
+    if (pickupCoords && dropCoords) {
       findNearbyRides();
     }
-  }, [pickupCoords]);
+  }, [pickupCoords, dropCoords]);
 
   // Handle pickup location selection
   const handlePickupSelect = (locationData) => {
@@ -430,10 +432,11 @@ export default function Dashboard() {
         {
           pickup,
           drop,
+          pickupCoords,
+          dropCoords,
           dateTime: rideDateTime,
           type,
           isScheduled,
-          pickupCoords, // Add this flag to help backend understand booking type
         },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -495,8 +498,15 @@ export default function Dashboard() {
 
   // Find nearby rides function
   const findNearbyRides = async () => {
-    if (!pickupCoords) {
-      alert("Please select pickup location first");
+    if (
+      !pickupCoords ||
+      !dropCoords ||
+      !pickupCoords.lat ||
+      !pickupCoords.lng ||
+      !dropCoords.lat ||
+      !dropCoords.lng
+    ) {
+      alert("Please select both pickup and drop locations");
       return;
     }
 
@@ -506,8 +516,8 @@ export default function Dashboard() {
       const res = await axios.post(
         "/api/rides/find",
         {
-          lat: pickupCoords.lat,
-          lng: pickupCoords.lng,
+          pickup: pickupCoords,
+          drop: dropCoords,
         },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -634,14 +644,24 @@ export default function Dashboard() {
   ride.pickupCoords?.lat && ride.pickupCoords?.lng ? (
     <Marker
       key={ride._id}
-      position={[
-        Number(ride.pickupCoords.lat),
-        Number(ride.pickupCoords.lng)
-      ]}
-      icon={availableRideIcon}
-    />
+      position={[ride.pickupCoords.lat, ride.pickupCoords.lng]}
+      icon={dropIcon}
+    >
+      <Popup>
+        <div className="space-y-1 text-sm">
+          <p><strong>👤 Name:</strong> {ride.user?.name || "User"}</p>
+          <p><strong>📍 From:</strong> {ride.pickup}</p>
+          <p><strong>🎯 To:</strong> {ride.drop}</p>
+          <p>
+            <strong>🚗 Type:</strong>{" "}
+            {ride.type === "poolCar" ? "Pooling Car" : "Looking for Car"}
+          </p>
+        </div>
+      </Popup>
+    </Marker>
   ) : null
 )}
+
 
             </MapContainer>
           </div>
