@@ -1,7 +1,5 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Popup } from "react-leaflet";
-
 import axios from "axios";
 
 import {
@@ -10,6 +8,7 @@ import {
   Marker,
   Polyline,
   useMap,
+  Popup,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -60,28 +59,8 @@ function FitRoute({ coords }) {
     if (coords.length) map.fitBounds(coords);
   }, [coords, map]);
   return null;
-}
-
-// Auto fit map to nearby rides
-function FitNearbyRides({ rides }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!rides || rides.length === 0) return;
-
-    const bounds = rides
-      .filter(r => r.pickupCoords?.lat && r.pickupCoords?.lng)
-      .map(r => [r.pickupCoords.lat, r.pickupCoords.lng]);
-
-    if (bounds.length > 0) {
-      map.fitBounds(bounds, { padding: [50, 50] });
-    }
-  }, [rides, map]);
-
-  return null;
-}
-
-// Location Autocomplete Component
+}// Lo
+cation Autocomplete Component
 function LocationAutocomplete({
   value,
   onChange,
@@ -209,9 +188,113 @@ function LocationAutocomplete({
       )}
     </div>
   );
+}// Enhanced
+ Ride Match Card Component
+function RideMatchCard({ ride, distance, onConnect, onDismiss }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  return (
+    <div className="bg-gradient-to-r from-green-400 to-blue-500 p-1 rounded-lg shadow-lg animate-pulse">
+      <div className="bg-white rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+              {ride.user?.name?.charAt(0) || 'D'}
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-800">
+                {ride.user?.name || 'Driver'}
+              </h3>
+              <p className="text-sm text-gray-600">
+                🚗 Pooling Car • {distance} km away
+              </p>
+            </div>
+          </div>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="text-blue-600 hover:text-blue-800 text-sm"
+            >
+              {isExpanded ? 'Less' : 'Details'}
+            </button>
+            <button
+              onClick={onDismiss}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center text-sm text-gray-700">
+            <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+            <span className="font-medium">From:</span>
+            <span className="ml-1">{ride.pickup}</span>
+          </div>
+          <div className="flex items-center text-sm text-gray-700">
+            <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+            <span className="font-medium">To:</span>
+            <span className="ml-1">{ride.drop}</span>
+          </div>
+          <div className="flex items-center text-sm text-gray-700">
+            <span className="mr-2">🕒</span>
+            <span className="font-medium">Time:</span>
+            <span className="ml-1">
+              {new Date(ride.dateTime).toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+            <div className="flex items-center text-sm text-gray-600">
+              <span className="mr-2">📱</span>
+              <span>Contact: {ride.user?.email || 'Available after connection'}</span>
+            </div>
+            <div className="flex items-center text-sm text-gray-600">
+              <span className="mr-2">⭐</span>
+              <span>Rating: 4.8/5 (23 rides)</span>
+            </div>
+            <div className="flex items-center text-sm text-gray-600">
+              <span className="mr-2">💺</span>
+              <span>Available seats: 3</span>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 flex space-x-2">
+          <button
+            onClick={() => onConnect(ride)}
+            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-medium transition"
+          >
+            🤝 Connect & Share Details
+          </button>
+          <button
+            onClick={() => window.open(`https://maps.google.com/maps?q=${ride.pickupCoords.lat},${ride.pickupCoords.lng}`, '_blank')}
+            className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md transition"
+          >
+            📍
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-export default function Dashboard() {
+// Calculate distance between two coordinates (Haversine formula)
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}e
+xport default function Dashboard() {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(true);
 
@@ -225,7 +308,7 @@ export default function Dashboard() {
   const [pickup, setPickup] = useState("");
   const [drop, setDrop] = useState("");
   const [dateTime, setDateTime] = useState("");
-  const [isScheduled, setIsScheduled] = useState(false); // Toggle for immediate vs scheduled
+  const [isScheduled, setIsScheduled] = useState(false);
 
   const [pickupCoords, setPickupCoords] = useState(null);
   const [dropCoords, setDropCoords] = useState(null);
@@ -233,9 +316,11 @@ export default function Dashboard() {
   const [routeCoords, setRouteCoords] = useState([]);
   const [distance, setDistance] = useState(null);
   const [duration, setDuration] = useState(null);
-  const [rideType, setRideType] = useState(null); // "poolCar" or "findCar"
+  const [rideType, setRideType] = useState(null);
   const [pendingRides, setPendingRides] = useState([]);
   const [nearbyRides, setNearbyRides] = useState([]);
+  const [matchedRides, setMatchedRides] = useState([]);
+  const [dismissedRides, setDismissedRides] = useState([]);
 
   // Auth
   useEffect(() => {
@@ -266,7 +351,6 @@ export default function Dashboard() {
       const res = await axios.get("/api/rides/my", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      // Filter only pending rides and sort by most recent
       const pending = res.data
         .filter((ride) => ride.status === "pending")
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -276,14 +360,11 @@ export default function Dashboard() {
     }
   };
 
-
-
-  // Enhanced route fetching with better visualization
+  // Enhanced route fetching
   const fetchRoute = async (start, end) => {
     try {
       const token = localStorage.getItem("token");
 
-      // Try backend route first
       try {
         const res = await axios.post(
           "/api/rides/route",
@@ -302,9 +383,8 @@ export default function Dashboard() {
         console.log("Backend route failed, trying OSRM...");
       }
 
-      // Fallback to OSRM for route visualization
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-
+      
       const response = await fetch(osrmUrl);
       if (response.ok) {
         const data = await response.json();
@@ -319,21 +399,19 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error("Route fetch error:", err);
-      // Fallback: draw straight line
       setRouteCoords([[start.lat, start.lng], [end.lat, end.lng]]);
-
-      // Calculate approximate distance using Haversine formula
-      const R = 6371; // Earth's radius in km
+      
+      const R = 6371;
       const dLat = (end.lat - start.lat) * Math.PI / 180;
       const dLng = (end.lng - start.lng) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(start.lat * Math.PI / 180) * Math.cos(end.lat * Math.PI / 180) *
-        Math.sin(dLng / 2) * Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(start.lat * Math.PI / 180) * Math.cos(end.lat * Math.PI / 180) *
+                Math.sin(dLng/2) * Math.sin(dLng/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       const distance = R * c;
-
+      
       setDistance(distance.toFixed(2));
-      setDuration(Math.round(distance * 2)); // Rough estimate: 30 km/h average
+      setDuration(Math.round(distance * 2));
     }
   };
 
@@ -341,14 +419,60 @@ export default function Dashboard() {
     if (pickupCoords && dropCoords) {
       fetchRoute(pickupCoords, dropCoords);
     }
-  }, [pickupCoords, dropCoords]);
-
-  // Auto fetch nearby rides when pickup location changes
+  }, [pickupCoords, dropCoords]); 
+ // Enhanced nearby rides search with matching
   useEffect(() => {
-    if (pickupCoords && dropCoords) {
+    if (pickupCoords && drop) {
       findNearbyRides();
     }
-  }, [pickupCoords, dropCoords]);
+  }, [pickupCoords, drop]);
+
+  const findNearbyRides = async () => {
+    if (!pickupCoords) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.post(
+        "/api/rides/find",
+        {
+          lat: pickupCoords.lat,
+          lng: pickupCoords.lng,
+          drop: drop, // Send drop location for better matching
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const ridesWithDistance = res.data.map(ride => ({
+        ...ride,
+        distance: calculateDistance(
+          pickupCoords.lat,
+          pickupCoords.lng,
+          ride.pickupCoords.lat,
+          ride.pickupCoords.lng
+        ).toFixed(1)
+      }));
+
+      setNearbyRides(ridesWithDistance);
+
+      // Find matching rides (same or similar destination)
+      if (drop) {
+        const matches = ridesWithDistance.filter(ride => {
+          const dropSimilarity = ride.drop.toLowerCase().includes(drop.toLowerCase()) ||
+                                drop.toLowerCase().includes(ride.drop.toLowerCase());
+          const isClose = parseFloat(ride.distance) <= 5; // Within 5km
+          const notDismissed = !dismissedRides.includes(ride._id);
+          
+          return dropSimilarity && isClose && notDismissed;
+        });
+
+        setMatchedRides(matches);
+      }
+    } catch (err) {
+      console.error("Find rides error:", err);
+    }
+  };
 
   // Handle pickup location selection
   const handlePickupSelect = (locationData) => {
@@ -358,39 +482,46 @@ export default function Dashboard() {
     });
   };
 
-  const handleUseMyLocation = () => {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser");
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-
-        try {
-          const res = await axios.get(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
-          );
-
-          const address = res.data.display_name;
-          setPickup(address);
-          setPickupCoords({ lat, lng });
-        } catch (err) {
-          alert("Unable to fetch address");
-        }
-      },
-      () => alert("Location access denied")
-    );
-  };
-
   // Handle drop location selection  
   const handleDropSelect = (locationData) => {
     setDropCoords({
       lat: locationData.lat,
       lng: locationData.lng
     });
+  };
+
+  // Handle ride connection
+  const handleConnectRide = async (ride) => {
+    try {
+      const token = localStorage.getItem("token");
+      
+      // Create a connection request
+      await axios.post(
+        "/api/rides/connect",
+        {
+          rideId: ride._id,
+          message: `Hi! I'd like to join your ride from ${ride.pickup} to ${ride.drop}. My pickup is at ${pickup}.`
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      alert(`Connection request sent to ${ride.user?.name || 'driver'}! They will be notified and can share contact details.`);
+      
+      // Remove from matched rides
+      setMatchedRides(prev => prev.filter(r => r._id !== ride._id));
+      
+    } catch (err) {
+      console.error("Connect error:", err);
+      alert("Failed to connect. Please try again.");
+    }
+  };
+
+  // Handle dismissing a ride match
+  const handleDismissRide = (rideId) => {
+    setDismissedRides(prev => [...prev, rideId]);
+    setMatchedRides(prev => prev.filter(r => r._id !== rideId));
   };
 
   // Handle booking
@@ -405,7 +536,6 @@ export default function Dashboard() {
       return;
     }
 
-    // For scheduled rides, validate date/time
     if (isScheduled) {
       if (!dateTime) {
         alert("Please select a date and time for your scheduled ride");
@@ -423,8 +553,6 @@ export default function Dashboard() {
 
     try {
       const token = localStorage.getItem("token");
-
-      // Use current time for immediate booking, selected time for scheduled
       const rideDateTime = isScheduled ? dateTime : new Date().toISOString();
 
       await axios.post(
@@ -432,11 +560,10 @@ export default function Dashboard() {
         {
           pickup,
           drop,
-          pickupCoords,
-          dropCoords,
           dateTime: rideDateTime,
           type,
           isScheduled,
+          pickupCoords,
         },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -462,17 +589,17 @@ export default function Dashboard() {
       setDistance(null);
       setDuration(null);
       setRideType(null);
+      setNearbyRides([]);
+      setMatchedRides([]);
 
-      // Refresh stats and pending rides
       fetchStats();
       fetchPendingRides();
     } catch (err) {
       console.error("Booking error:", err);
       alert(err.response?.data?.message || "Failed to book ride");
     }
-  };
-
-  // Handle ending a ride
+  };  //
+ Handle ending a ride
   const handleEndRide = async (rideId) => {
     try {
       const token = localStorage.getItem("token");
@@ -485,8 +612,6 @@ export default function Dashboard() {
       );
 
       alert("Ride completed successfully!");
-
-      // Refresh stats and pending rides
       fetchStats();
       fetchPendingRides();
     } catch (err) {
@@ -496,51 +621,11 @@ export default function Dashboard() {
     }
   };
 
-  // Find nearby rides function
-  const findNearbyRides = async () => {
-    if (
-      !pickupCoords ||
-      !dropCoords ||
-      !pickupCoords.lat ||
-      !pickupCoords.lng ||
-      !dropCoords.lat ||
-      !dropCoords.lng
-    ) {
-      alert("Please select both pickup and drop locations");
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem("token");
-
-      const res = await axios.post(
-        "/api/rides/find",
-        {
-          pickup: pickupCoords,
-          drop: dropCoords,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      console.log("NEARBY RIDES RESPONSE:", res.data);
-      if (res.data.length === 0) {
-        alert("No nearby rides found");
-      }
-
-      setNearbyRides(res.data);
-    } catch (err) {
-      console.error("Find rides error:", err);
-      alert("Failed to find nearby rides");
-    }
-  };
-
   return (
     <div className="flex min-h-screen bg-blue-50">
       {/* SIDEBAR */}
       <aside
-        className={`${isOpen ? "w-72" : "w-20"
-          } bg-blue-800 text-white p-6`}
+        className={`${isOpen ? "w-72" : "w-20"} bg-blue-800 text-white p-6`}
       >
         <button onClick={() => setIsOpen(!isOpen)}>☰</button>
         <ul className="mt-10 space-y-6">
@@ -567,10 +652,28 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Debug Check */}
-        <p className="text-sm text-gray-600">Nearby rides count: {nearbyRides.length}</p>
+        {/* Ride Matches - Glowing Cards */}
+        {matchedRides.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center">
+              ✨ Perfect Matches Found!
+              <span className="ml-2 bg-green-500 text-white text-sm px-2 py-1 rounded-full">
+                {matchedRides.length}
+              </span>
+            </h2>
+            {matchedRides.map((ride) => (
+              <RideMatchCard
+                key={ride._id}
+                ride={ride}
+                distance={ride.distance}
+                onConnect={handleConnectRide}
+                onDismiss={() => handleDismissRide(ride._id)}
+              />
+            ))}
+          </div>
+        )}
 
-        {/* End Ride Button - Show if there are pending rides */}
+        {/* Active Ride */}
         {pendingRides.length > 0 && (
           <div className="bg-white p-6 rounded shadow-lg border-2 border-green-500">
             <div className="flex items-center justify-between">
@@ -588,10 +691,11 @@ export default function Dashboard() {
                   <strong>Date:</strong>{" "}
                   {new Date(pendingRides[0].dateTime).toLocaleString()}
                 </p>
-                <span className={`inline-block mt-2 px-3 py-1 rounded text-sm font-semibold ${pendingRides[0].type === "poolCar"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-purple-100 text-purple-800"
-                  }`}>
+                <span className={`inline-block mt-2 px-3 py-1 rounded text-sm font-semibold ${
+                  pendingRides[0].type === "poolCar"
+                    ? "bg-green-100 text-green-800"
+                    : "bg-purple-100 text-purple-800"
+                }`}>
                   {pendingRides[0].type === "poolCar" ? "🚗 Pooling Car" : "🔍 Finding Car"}
                 </span>
               </div>
@@ -603,9 +707,8 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-        )}
-
-        <div className="flex gap-6">
+        )}   
+     <div className="flex gap-6">
           <div className="flex-1 h-[420px] bg-white rounded shadow">
             <MapContainer
               center={{ lat: 20.5937, lng: 78.9629 }}
@@ -613,18 +716,68 @@ export default function Dashboard() {
               style={{ height: "100%" }}
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              
+              {/* User's pickup location */}
               {pickupCoords && (
-                <Marker
-                  position={pickupCoords}
-                  icon={pickupIcon}
-                />
+                <Marker position={pickupCoords} icon={pickupIcon}>
+                  <Popup>
+                    <div className="text-center">
+                      <strong>Your Pickup</strong><br/>
+                      {pickup}
+                    </div>
+                  </Popup>
+                </Marker>
               )}
+              
+              {/* User's drop location */}
               {dropCoords && (
-                <Marker
-                  position={dropCoords}
-                  icon={dropIcon}
-                />
+                <Marker position={dropCoords} icon={dropIcon}>
+                  <Popup>
+                    <div className="text-center">
+                      <strong>Your Destination</strong><br/>
+                      {drop}
+                    </div>
+                  </Popup>
+                </Marker>
               )}
+              
+              {/* Available nearby rides */}
+              {nearbyRides.map((ride) => (
+                <Marker
+                  key={ride._id}
+                  position={[ride.pickupCoords.lat, ride.pickupCoords.lng]}
+                  icon={availableRideIcon}
+                >
+                  <Popup>
+                    <div className="text-center min-w-[200px]">
+                      <strong className="text-blue-600">
+                        {ride.user?.name || 'Driver'}
+                      </strong><br/>
+                      <div className="text-sm text-gray-600 mt-1">
+                        🚗 {ride.type === 'poolCar' ? 'Offering Ride' : 'Looking for Ride'}
+                      </div>
+                      <div className="text-sm mt-2">
+                        <strong>From:</strong> {ride.pickup}<br/>
+                        <strong>To:</strong> {ride.drop}<br/>
+                        <strong>Distance:</strong> {ride.distance} km away
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(ride.dateTime).toLocaleString()}
+                      </div>
+                      {ride.type === 'poolCar' && (
+                        <button
+                          onClick={() => handleConnectRide(ride)}
+                          className="mt-2 bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
+                        >
+                          Connect
+                        </button>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+              
+              {/* Route visualization */}
               {routeCoords.length > 0 && (
                 <>
                   <Polyline
@@ -639,47 +792,23 @@ export default function Dashboard() {
                   <FitRoute coords={routeCoords} />
                 </>
               )}
-              {/* AVAILABLE RIDES ON MAP */}
-              {nearbyRides.map((ride) =>
-  ride.pickupCoords?.lat && ride.pickupCoords?.lng ? (
-    <Marker
-      key={ride._id}
-      position={[ride.pickupCoords.lat, ride.pickupCoords.lng]}
-      icon={dropIcon}
-    >
-      <Popup>
-        <div className="space-y-1 text-sm">
-          <p><strong>👤 Name:</strong> {ride.user?.name || "User"}</p>
-          <p><strong>📍 From:</strong> {ride.pickup}</p>
-          <p><strong>🎯 To:</strong> {ride.drop}</p>
-          <p>
-            <strong>🚗 Type:</strong>{" "}
-            {ride.type === "poolCar" ? "Pooling Car" : "Looking for Car"}
-          </p>
-        </div>
-      </Popup>
-    </Marker>
-  ) : null
-)}
-
-
             </MapContainer>
           </div>
 
           <div className="w-96 bg-white p-6 rounded shadow space-y-4">
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-gray-700">
-                  📍 Pickup Location
-                </label>
-                <span
-                  onClick={handleUseMyLocation}
-                  className="text-blue-600 text-sm cursor-pointer hover:underline"
-                >
-                  Use my location
-                </span>
+            {/* Nearby rides info */}
+            {nearbyRides.length > 0 && (
+              <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
+                <p className="text-sm text-blue-700 text-center">
+                  🔍 Found {nearbyRides.length} nearby ride{nearbyRides.length !== 1 ? 's' : ''}
+                </p>
               </div>
+            )}
 
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">
+                📍 Pickup Location
+              </label>
               <LocationAutocomplete
                 value={pickup}
                 onChange={setPickup}
@@ -709,19 +838,21 @@ export default function Dashboard() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsScheduled(false)}
-                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${!isScheduled
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
+                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${
+                    !isScheduled
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  }`}
                 >
                   Book Now
                 </button>
                 <button
                   onClick={() => setIsScheduled(true)}
-                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${isScheduled
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
+                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${
+                    isScheduled
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  }`}
                 >
                   Schedule Later
                 </button>
@@ -738,7 +869,7 @@ export default function Dashboard() {
                   className="border border-gray-300 p-3 w-full rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   value={dateTime}
                   onChange={(e) => setDateTime(e.target.value)}
-                  min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} // Minimum 1 minute from now
+                  min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Select a future date and time for your ride
@@ -764,12 +895,13 @@ export default function Dashboard() {
               <button
                 onClick={() => handleBooking("poolCar")}
                 disabled={!pickup || !drop || !pickupCoords || !dropCoords}
-                className={`w-full py-3 rounded-md font-semibold transition ${!pickup || !drop || !pickupCoords || !dropCoords
-                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  : rideType === "poolCar"
+                className={`w-full py-3 rounded-md font-semibold transition ${
+                  !pickup || !drop || !pickupCoords || !dropCoords
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    : rideType === "poolCar"
                     ? "bg-green-600 text-white"
                     : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
+                }`}
                 onMouseEnter={() => setRideType("poolCar")}
                 onMouseLeave={() => setRideType(null)}
               >
@@ -778,12 +910,13 @@ export default function Dashboard() {
               <button
                 onClick={() => handleBooking("findCar")}
                 disabled={!pickup || !drop || !pickupCoords || !dropCoords}
-                className={`w-full py-3 rounded-md font-semibold transition ${!pickup || !drop || !pickupCoords || !dropCoords
-                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  : rideType === "findCar"
+                className={`w-full py-3 rounded-md font-semibold transition ${
+                  !pickup || !drop || !pickupCoords || !dropCoords
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    : rideType === "findCar"
                     ? "bg-purple-600 text-white"
                     : "bg-indigo-600 text-white hover:bg-indigo-700"
-                  }`}
+                }`}
                 onMouseEnter={() => setRideType("findCar")}
                 onMouseLeave={() => setRideType(null)}
               >

@@ -194,44 +194,32 @@ router.put("/:id/complete", auth, async (req, res) => {
 // ----------------------------------------------------------
 router.post("/find", auth, async (req, res) => {
   try {
-    const { pickup, drop } = req.body;
+    const { lat, lng, drop } = req.body;
 
-    if (!pickup || !drop) {
-      return res.status(400).json({ msg: "Pickup and drop required" });
+    if (!lat || !lng) {
+      return res.status(400).json({ msg: "Location required" });
     }
 
-    if (!pickup.lat || !pickup.lng || !drop.lat || !drop.lng) {
-      return res.status(400).json({ msg: "Invalid coordinates" });
-    }
-
+    // Find all pending rides from other users with coordinates
     const rides = await Ride.find({
       status: "pending",
       user: { $ne: req.user },
-      pickupCoords: { $ne: null },
-      dropCoords: { $ne: null },
-    }).populate("user", "name email");
+      pickupCoords: { $exists: true },
+      type: "poolCar" // Only show rides offering pools
+    }).populate('user', 'name email'); // Include user details
 
-    console.log("ALL OTHER PENDING RIDES:", rides.length);
+    console.log("ALL POOL CAR RIDES:", rides.length);
 
+    // Calculate distance and filter nearby rides
     const nearby = rides.filter((ride) => {
-      // Calculate pickup distance
-      const pickupDistance = Math.sqrt(
-        Math.pow(ride.pickupCoords.lat - pickup.lat, 2) +
-        Math.pow(ride.pickupCoords.lng - pickup.lng, 2)
-      );
+      const dLat = ride.pickupCoords.lat - lat;
+      const dLng = ride.pickupCoords.lng - lng;
+      const distance = Math.sqrt(dLat * dLat + dLng * dLng);
 
-      // Calculate drop distance
-      const dropDistance = Math.sqrt(
-        Math.pow(ride.dropCoords.lat - drop.lat, 2) +
-        Math.pow(ride.dropCoords.lng - drop.lng, 2)
-      );
-
-      // Match if BOTH pickup and drop are within tolerance
-      // 0.1 ≈ 10km, 0.2 ≈ 20km (rough approximation)
-      return pickupDistance <= 0.1 && dropDistance <= 0.2;
+      return distance <= 0.5; // Within ~50km radius (more realistic)
     });
 
-    console.log("NEARBY COMPATIBLE RIDES:", nearby.length);
+    console.log("NEARBY RIDES:", nearby.length);
 
     res.json(nearby);
   } catch (err) {
@@ -241,3 +229,58 @@ router.post("/find", auth, async (req, res) => {
 });
 
 module.exports = router;
+
+    if (!rideId || !message) {
+      return res.status(400).json({ msg: "Ride ID and message required" });
+    }
+
+    // Find the ride
+    const ride = await Ride.findById(rideId).populate('user', 'name email');
+    
+    if (!ride) {
+      return res.status(404).json({ msg: "Ride not found" });
+    }
+
+    if (ride.user._id.toString() === req.user) {
+      return res.status(400).json({ msg: "Cannot connect to your own ride" });
+    }
+
+    // Get current user details
+    const User = require("../models/User");
+    const currentUser = await User.findById(req.user).select('name email');
+
+    // Here you would typically:
+    // 1. Create a connection/request record in database
+    // 2. Send notification to ride owner
+    // 3. Send email/SMS to both parties
+    
+    // For now, we'll simulate successful connection
+    console.log(`Connection request from ${currentUser.name} to ${ride.user.name}`);
+    console.log(`Message: ${message}`);
+
+    // In a real app, you'd store this connection request
+    // const connection = await Connection.create({
+    //   requester: req.user,
+    //   rideOwner: ride.user._id,
+    //   ride: rideId,
+    //   message,
+    //   status: 'pending'
+    // });
+
+    res.json({
+      message: "Connection request sent successfully",
+      rideOwner: {
+        name: ride.user.name,
+        email: ride.user.email // In production, only share after acceptance
+      },
+      requester: {
+        name: currentUser.name,
+        email: currentUser.email
+      }
+    });
+
+  } catch (err) {
+    console.error("Connect error:", err);
+    res.status(500).json({ msg: "Failed to connect to ride" });
+  }
+});
