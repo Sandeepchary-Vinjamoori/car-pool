@@ -228,7 +228,12 @@ router.post("/find", auth, async (req, res) => {
   }
 });
 
-module.exports = router;
+// ----------------------------------------------------------
+// CONNECT TO A RIDE (NEW ENDPOINT)
+// ----------------------------------------------------------
+router.post("/connect", auth, async (req, res) => {
+  try {
+    const { rideId, message } = req.body;
 
     if (!rideId || !message) {
       return res.status(400).json({ msg: "Ride ID and message required" });
@@ -284,3 +289,5 @@ module.exports = router;
     res.status(500).json({ msg: "Failed to connect to ride" });
   }
 });
+
+module.exports = router;

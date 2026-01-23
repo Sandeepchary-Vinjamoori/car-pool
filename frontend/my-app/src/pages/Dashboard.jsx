@@ -568,6 +568,7 @@ export default function Dashboard() {
           type,
           isScheduled,
           pickupCoords,
+          dropCoords,
         },
         {
           headers: { Authorization: `Bearer ${token}` },
