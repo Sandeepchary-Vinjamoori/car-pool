@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
@@ -59,8 +59,9 @@ function FitRoute({ coords }) {
     if (coords.length) map.fitBounds(coords);
   }, [coords, map]);
   return null;
-}// Lo
-cation Autocomplete Component
+}
+
+// Location Autocomplete Component
 function LocationAutocomplete({
   value,
   onChange,
@@ -188,11 +189,12 @@ function LocationAutocomplete({
       )}
     </div>
   );
-}// Enhanced
- Ride Match Card Component
+}
+
+// Enhanced Ride Match Card Component
 function RideMatchCard({ ride, distance, onConnect, onDismiss }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  
+
   return (
     <div className="bg-gradient-to-r from-green-400 to-blue-500 p-1 rounded-lg shadow-lg animate-pulse">
       <div className="bg-white rounded-lg p-4">
@@ -287,14 +289,15 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   const R = 6371; // Earth's radius in km
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng/2) * Math.sin(dLng/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
-}e
-xport default function Dashboard() {
+}
+
+export default function Dashboard() {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(true);
 
@@ -384,7 +387,7 @@ xport default function Dashboard() {
       }
 
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-      
+
       const response = await fetch(osrmUrl);
       if (response.ok) {
         const data = await response.json();
@@ -400,16 +403,16 @@ xport default function Dashboard() {
     } catch (err) {
       console.error("Route fetch error:", err);
       setRouteCoords([[start.lat, start.lng], [end.lat, end.lng]]);
-      
+
       const R = 6371;
       const dLat = (end.lat - start.lat) * Math.PI / 180;
       const dLng = (end.lng - start.lng) * Math.PI / 180;
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(start.lat * Math.PI / 180) * Math.cos(end.lat * Math.PI / 180) *
-                Math.sin(dLng/2) * Math.sin(dLng/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(start.lat * Math.PI / 180) * Math.cos(end.lat * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distance = R * c;
-      
+
       setDistance(distance.toFixed(2));
       setDuration(Math.round(distance * 2));
     }
@@ -419,15 +422,10 @@ xport default function Dashboard() {
     if (pickupCoords && dropCoords) {
       fetchRoute(pickupCoords, dropCoords);
     }
-  }, [pickupCoords, dropCoords]); 
- // Enhanced nearby rides search with matching
-  useEffect(() => {
-    if (pickupCoords && drop) {
-      findNearbyRides();
-    }
-  }, [pickupCoords, drop]);
+  }, [pickupCoords, dropCoords]);
 
-  const findNearbyRides = async () => {
+  // Enhanced nearby rides search with matching
+  const findNearbyRides = useCallback(async () => {
     if (!pickupCoords) return;
 
     try {
@@ -460,10 +458,10 @@ xport default function Dashboard() {
       if (drop) {
         const matches = ridesWithDistance.filter(ride => {
           const dropSimilarity = ride.drop.toLowerCase().includes(drop.toLowerCase()) ||
-                                drop.toLowerCase().includes(ride.drop.toLowerCase());
+            drop.toLowerCase().includes(ride.drop.toLowerCase());
           const isClose = parseFloat(ride.distance) <= 5; // Within 5km
           const notDismissed = !dismissedRides.includes(ride._id);
-          
+
           return dropSimilarity && isClose && notDismissed;
         });
 
@@ -472,7 +470,13 @@ xport default function Dashboard() {
     } catch (err) {
       console.error("Find rides error:", err);
     }
-  };
+  }, [pickupCoords, drop, dismissedRides]);
+
+  useEffect(() => {
+    if (pickupCoords && drop) {
+      findNearbyRides();
+    }
+  }, [pickupCoords, drop, findNearbyRides]);
 
   // Handle pickup location selection
   const handlePickupSelect = (locationData) => {
@@ -494,7 +498,7 @@ xport default function Dashboard() {
   const handleConnectRide = async (ride) => {
     try {
       const token = localStorage.getItem("token");
-      
+
       // Create a connection request
       await axios.post(
         "/api/rides/connect",
@@ -508,10 +512,10 @@ xport default function Dashboard() {
       );
 
       alert(`Connection request sent to ${ride.user?.name || 'driver'}! They will be notified and can share contact details.`);
-      
+
       // Remove from matched rides
       setMatchedRides(prev => prev.filter(r => r._id !== ride._id));
-      
+
     } catch (err) {
       console.error("Connect error:", err);
       alert("Failed to connect. Please try again.");
@@ -598,8 +602,9 @@ xport default function Dashboard() {
       console.error("Booking error:", err);
       alert(err.response?.data?.message || "Failed to book ride");
     }
-  };  //
- Handle ending a ride
+  };
+
+  // Handle ending a ride
   const handleEndRide = async (rideId) => {
     try {
       const token = localStorage.getItem("token");
@@ -691,11 +696,10 @@ xport default function Dashboard() {
                   <strong>Date:</strong>{" "}
                   {new Date(pendingRides[0].dateTime).toLocaleString()}
                 </p>
-                <span className={`inline-block mt-2 px-3 py-1 rounded text-sm font-semibold ${
-                  pendingRides[0].type === "poolCar"
+                <span className={`inline-block mt-2 px-3 py-1 rounded text-sm font-semibold ${pendingRides[0].type === "poolCar"
                     ? "bg-green-100 text-green-800"
                     : "bg-purple-100 text-purple-800"
-                }`}>
+                  }`}>
                   {pendingRides[0].type === "poolCar" ? "🚗 Pooling Car" : "🔍 Finding Car"}
                 </span>
               </div>
@@ -707,8 +711,8 @@ xport default function Dashboard() {
               </button>
             </div>
           </div>
-        )}   
-     <div className="flex gap-6">
+        )}
+        <div className="flex gap-6">
           <div className="flex-1 h-[420px] bg-white rounded shadow">
             <MapContainer
               center={{ lat: 20.5937, lng: 78.9629 }}
@@ -716,31 +720,31 @@ xport default function Dashboard() {
               style={{ height: "100%" }}
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              
+
               {/* User's pickup location */}
               {pickupCoords && (
                 <Marker position={pickupCoords} icon={pickupIcon}>
                   <Popup>
                     <div className="text-center">
-                      <strong>Your Pickup</strong><br/>
+                      <strong>Your Pickup</strong><br />
                       {pickup}
                     </div>
                   </Popup>
                 </Marker>
               )}
-              
+
               {/* User's drop location */}
               {dropCoords && (
                 <Marker position={dropCoords} icon={dropIcon}>
                   <Popup>
                     <div className="text-center">
-                      <strong>Your Destination</strong><br/>
+                      <strong>Your Destination</strong><br />
                       {drop}
                     </div>
                   </Popup>
                 </Marker>
               )}
-              
+
               {/* Available nearby rides */}
               {nearbyRides.map((ride) => (
                 <Marker
@@ -752,13 +756,13 @@ xport default function Dashboard() {
                     <div className="text-center min-w-[200px]">
                       <strong className="text-blue-600">
                         {ride.user?.name || 'Driver'}
-                      </strong><br/>
+                      </strong><br />
                       <div className="text-sm text-gray-600 mt-1">
                         🚗 {ride.type === 'poolCar' ? 'Offering Ride' : 'Looking for Ride'}
                       </div>
                       <div className="text-sm mt-2">
-                        <strong>From:</strong> {ride.pickup}<br/>
-                        <strong>To:</strong> {ride.drop}<br/>
+                        <strong>From:</strong> {ride.pickup}<br />
+                        <strong>To:</strong> {ride.drop}<br />
                         <strong>Distance:</strong> {ride.distance} km away
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
@@ -776,7 +780,7 @@ xport default function Dashboard() {
                   </Popup>
                 </Marker>
               ))}
-              
+
               {/* Route visualization */}
               {routeCoords.length > 0 && (
                 <>
@@ -838,21 +842,19 @@ xport default function Dashboard() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsScheduled(false)}
-                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${
-                    !isScheduled
+                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${!isScheduled
                       ? "bg-blue-600 text-white"
                       : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                  }`}
+                    }`}
                 >
                   Book Now
                 </button>
                 <button
                   onClick={() => setIsScheduled(true)}
-                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${
-                    isScheduled
+                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${isScheduled
                       ? "bg-blue-600 text-white"
                       : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                  }`}
+                    }`}
                 >
                   Schedule Later
                 </button>
@@ -895,13 +897,12 @@ xport default function Dashboard() {
               <button
                 onClick={() => handleBooking("poolCar")}
                 disabled={!pickup || !drop || !pickupCoords || !dropCoords}
-                className={`w-full py-3 rounded-md font-semibold transition ${
-                  !pickup || !drop || !pickupCoords || !dropCoords
+                className={`w-full py-3 rounded-md font-semibold transition ${!pickup || !drop || !pickupCoords || !dropCoords
                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                     : rideType === "poolCar"
-                    ? "bg-green-600 text-white"
-                    : "bg-blue-600 text-white hover:bg-blue-700"
-                }`}
+                      ? "bg-green-600 text-white"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
                 onMouseEnter={() => setRideType("poolCar")}
                 onMouseLeave={() => setRideType(null)}
               >
@@ -910,13 +911,12 @@ xport default function Dashboard() {
               <button
                 onClick={() => handleBooking("findCar")}
                 disabled={!pickup || !drop || !pickupCoords || !dropCoords}
-                className={`w-full py-3 rounded-md font-semibold transition ${
-                  !pickup || !drop || !pickupCoords || !dropCoords
+                className={`w-full py-3 rounded-md font-semibold transition ${!pickup || !drop || !pickupCoords || !dropCoords
                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                     : rideType === "findCar"
-                    ? "bg-purple-600 text-white"
-                    : "bg-indigo-600 text-white hover:bg-indigo-700"
-                }`}
+                      ? "bg-purple-600 text-white"
+                      : "bg-indigo-600 text-white hover:bg-indigo-700"
+                  }`}
                 onMouseEnter={() => setRideType("findCar")}
                 onMouseLeave={() => setRideType(null)}
               >
