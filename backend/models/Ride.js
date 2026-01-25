@@ -13,16 +13,30 @@ const RideSchema = new mongoose.Schema(
 
     dateTime: { type: Date, required: true },
 
-    // 📍 Pickup location
+    // 📍 Pickup location - GeoJSON format
     pickupCoords: {
-      lat: { type: Number },
-      lng: { type: Number },
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
+      },
+      coordinates: {
+        type: [Number],
+        required: true
+      }
     },
 
-    // 🎯 Drop location (NEW)
+    // 🎯 Drop location - GeoJSON format
     dropCoords: {
-      lat: { type: Number },
-      lng: { type: Number },
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
+      },
+      coordinates: {
+        type: [Number],
+        required: true
+      }
     },
 
     status: {
@@ -41,8 +55,32 @@ const RideSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    // Enhanced fields for ride matching
+    availableSeats: { 
+      type: Number, 
+      default: 1,
+      min: 0
+    },
+    connectedUsers: [{ 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: 'User' 
+    }],
+    isActive: { 
+      type: Boolean, 
+      default: true 
+    }
   },
   { timestamps: true }
 );
+
+// Geospatial indexes for location-based queries
+RideSchema.index({ pickupCoords: '2dsphere' });
+RideSchema.index({ dropCoords: '2dsphere' });
+
+// Compound indexes for performance optimization
+RideSchema.index({ type: 1, isActive: 1, dateTime: 1 });
+RideSchema.index({ user: 1, isActive: 1 });
+RideSchema.index({ isActive: 1, availableSeats: 1 });
 
 module.exports = mongoose.model("Ride", RideSchema);

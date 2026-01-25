@@ -1,23 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const Ride = require("../models/Ride");
-const jwt = require("jsonwebtoken");
+const ActiveSearch = require("../models/ActiveSearch");
+const auth = require("../middleware/auth");
 const axios = require("axios");
 const mongoose = require("mongoose");
-
-// ---------------- AUTH MIDDLEWARE ----------------
-const auth = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ msg: "No token" });
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded.id;
-    next();
-  } catch {
-    return res.status(401).json({ msg: "Invalid token" });
-  }
-};
 
 // ----------------------------------------------------------
 // ROUTE FETCH (GOOGLE → OSRM fallback)
@@ -120,7 +107,7 @@ router.post("/book", auth, async (req, res) => {
     }
 
     const ride = await Ride.create({
-      user: req.user,
+      user: req.user.id,
       pickup,
       drop,
       dateTime,
@@ -128,13 +115,12 @@ router.post("/book", auth, async (req, res) => {
       status: "pending",
       isScheduled: isScheduled || false,
       pickupCoords: {
-        lat: pickupCoords.lat,
-        lng: pickupCoords.lng,
+        type: 'Point',
+        coordinates: [pickupCoords.lng, pickupCoords.lat]
       },
-      // ADD DROP COORDS TO DATABASE
       dropCoords: {
-        lat: dropCoords.lat,
-        lng: dropCoords.lng,
+        type: 'Point',
+        coordinates: [dropCoords.lng, dropCoords.lat]
       },
     });
 
@@ -152,7 +138,7 @@ router.post("/book", auth, async (req, res) => {
 // GET MY RIDES
 // ----------------------------------------------------------
 router.get("/my", auth, async (req, res) => {
-  const rides = await Ride.find({ user: req.user }).sort({ dateTime: -1 });
+  const rides = await Ride.find({ user: req.user.id }).sort({ dateTime: -1 });
   res.json(rides);
 });
 
@@ -160,7 +146,7 @@ router.get("/my", auth, async (req, res) => {
 // STATS
 // ----------------------------------------------------------
 router.get("/stats", auth, async (req, res) => {
-  const rides = await Ride.find({ user: req.user });
+  const rides = await Ride.find({ user: req.user.id });
 
   res.json({
     total: rides.length,
@@ -175,7 +161,7 @@ router.get("/stats", auth, async (req, res) => {
 router.put("/:id/complete", auth, async (req, res) => {
   try {
     const updated = await Ride.findOneAndUpdate(
-      { _id: req.params.id, user: req.user },
+      { _id: req.params.id, user: req.user.id },
       { status: "completed" },
       { new: true }
     );
@@ -200,28 +186,40 @@ router.post("/find", auth, async (req, res) => {
       return res.status(400).json({ msg: "Location required" });
     }
 
-    // Find all pending rides from other users with coordinates
+    // Find all pending rides from other users with coordinates using GeoJSON
     const rides = await Ride.find({
       status: "pending",
-      user: { $ne: req.user },
-      pickupCoords: { $exists: true },
+      user: { $ne: req.user.id },
+      pickupCoords: { 
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [lng, lat]
+          },
+          $maxDistance: 50000 // 50km in meters
+        }
+      },
       type: "poolCar" // Only show rides offering pools
     }).populate('user', 'name email'); // Include user details
 
     console.log("ALL POOL CAR RIDES:", rides.length);
 
-    // Calculate distance and filter nearby rides
-    const nearby = rides.filter((ride) => {
-      const dLat = ride.pickupCoords.lat - lat;
-      const dLng = ride.pickupCoords.lng - lng;
-      const distance = Math.sqrt(dLat * dLat + dLng * dLng);
+    // Convert coordinates back to lat/lng format for frontend compatibility
+    const ridesWithLatLng = rides.map(ride => ({
+      ...ride.toObject(),
+      pickupCoords: {
+        lat: ride.pickupCoords.coordinates[1],
+        lng: ride.pickupCoords.coordinates[0]
+      },
+      dropCoords: {
+        lat: ride.dropCoords.coordinates[1],
+        lng: ride.dropCoords.coordinates[0]
+      }
+    }));
 
-      return distance <= 0.5; // Within ~50km radius (more realistic)
-    });
+    console.log("NEARBY RIDES:", ridesWithLatLng.length);
 
-    console.log("NEARBY RIDES:", nearby.length);
-
-    res.json(nearby);
+    res.json(ridesWithLatLng);
   } catch (err) {
     console.error("Find rides error:", err);
     res.status(500).json({ msg: "Failed to find nearby rides" });
@@ -246,13 +244,13 @@ router.post("/connect", auth, async (req, res) => {
       return res.status(404).json({ msg: "Ride not found" });
     }
 
-    if (ride.user._id.toString() === req.user) {
+    if (ride.user._id.toString() === req.user.id) {
       return res.status(400).json({ msg: "Cannot connect to your own ride" });
     }
 
     // Get current user details
     const User = require("../models/User");
-    const currentUser = await User.findById(req.user).select('name email');
+    const currentUser = await User.findById(req.user.id).select('name email');
 
     // Here you would typically:
     // 1. Create a connection/request record in database
@@ -289,5 +287,219 @@ router.post("/connect", auth, async (req, res) => {
     res.status(500).json({ msg: "Failed to connect to ride" });
   }
 });
+
+// ----------------------------------------------------------
+// START LIVE SEARCH (REAL-TIME MATCHING)
+// ----------------------------------------------------------
+router.post("/start-live-search", auth, async (req, res) => {
+  try {
+    const { pickup, drop, pickupCoords, dropCoords, type } = req.body;
+
+    if (!pickup || !drop || !pickupCoords || !dropCoords || !type) {
+      return res.status(400).json({ msg: "All fields required" });
+    }
+
+    console.log(`🔍 Starting live search for user ${req.user.id}`);
+    console.log(`Type: ${type}, Route: ${pickup} → ${drop}`);
+
+    // Remove any existing search for this user
+    await ActiveSearch.deleteMany({ user: req.user.id });
+
+    // Create new active search
+    const activeSearch = await ActiveSearch.create({
+      user: req.user.id,
+      pickup,
+      drop,
+      pickupCoords: {
+        type: 'Point',
+        coordinates: [pickupCoords.lng, pickupCoords.lat]
+      },
+      dropCoords: {
+        type: 'Point',
+        coordinates: [dropCoords.lng, dropCoords.lat]
+      },
+      type
+    });
+
+    // Immediately look for matches
+    const oppositeType = type === "findCar" ? "poolCar" : "findCar";
+    
+    const matches = await ActiveSearch.find({
+      user: { $ne: req.user.id },
+      type: oppositeType,
+      // Find searches within 5km radius using GeoJSON
+      pickupCoords: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [pickupCoords.lng, pickupCoords.lat]
+          },
+          $maxDistance: 5000 // 5km in meters
+        }
+      }
+    }).populate('user', 'name email');
+
+    // Filter by route similarity
+    const compatibleMatches = matches.filter(match => {
+      const pickupDistance = calculateDistance(
+        pickupCoords.lat, pickupCoords.lng,
+        match.pickupCoords.coordinates[1], match.pickupCoords.coordinates[0]
+      );
+      
+      const dropDistance = calculateDistance(
+        dropCoords.lat, dropCoords.lng,
+        match.dropCoords.coordinates[1], match.dropCoords.coordinates[0]
+      );
+
+      // Both pickup and drop should be within 3km
+      return pickupDistance <= 3 && dropDistance <= 3;
+    });
+
+    console.log(`Found ${compatibleMatches.length} live matches`);
+
+    res.json({
+      searchId: activeSearch._id,
+      matches: compatibleMatches,
+      message: `Live search started. Found ${compatibleMatches.length} active matches.`
+    });
+
+  } catch (err) {
+    console.error("Start live search error:", err);
+    res.status(500).json({ msg: "Failed to start live search" });
+  }
+});
+
+// ----------------------------------------------------------
+// GET LIVE MATCHES (POLLING ENDPOINT)
+// ----------------------------------------------------------
+router.get("/live-matches", auth, async (req, res) => {
+  try {
+    // Find user's active search
+    const userSearch = await ActiveSearch.findOne({ user: req.user.id });
+    
+    if (!userSearch) {
+      return res.json({ matches: [], message: "No active search" });
+    }
+
+    const oppositeType = userSearch.type === "findCar" ? "poolCar" : "findCar";
+    
+    // Find compatible active searches
+    const matches = await ActiveSearch.find({
+      user: { $ne: req.user.id },
+      type: oppositeType,
+      pickupCoords: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [userSearch.pickupCoords.coordinates[0], userSearch.pickupCoords.coordinates[1]]
+          },
+          $maxDistance: 5000 // 5km
+        }
+      }
+    }).populate('user', 'name email');
+
+    // Filter by route compatibility
+    const compatibleMatches = matches.filter(match => {
+      const pickupDistance = calculateDistance(
+        userSearch.pickupCoords.coordinates[1], userSearch.pickupCoords.coordinates[0],
+        match.pickupCoords.coordinates[1], match.pickupCoords.coordinates[0]
+      );
+      
+      const dropDistance = calculateDistance(
+        userSearch.dropCoords.coordinates[1], userSearch.dropCoords.coordinates[0],
+        match.dropCoords.coordinates[1], match.dropCoords.coordinates[0]
+      );
+
+      return pickupDistance <= 3 && dropDistance <= 3;
+    });
+
+    res.json({
+      matches: compatibleMatches,
+      userSearch: {
+        type: userSearch.type,
+        pickup: userSearch.pickup,
+        drop: userSearch.drop
+      }
+    });
+
+  } catch (err) {
+    console.error("Get live matches error:", err);
+    res.status(500).json({ msg: "Failed to get live matches" });
+  }
+});
+
+// ----------------------------------------------------------
+// STOP LIVE SEARCH
+// ----------------------------------------------------------
+router.delete("/stop-live-search", auth, async (req, res) => {
+  try {
+    await ActiveSearch.deleteMany({ user: req.user.id });
+    console.log(`🛑 Stopped live search for user ${req.user.id}`);
+    
+    res.json({ message: "Live search stopped" });
+  } catch (err) {
+    console.error("Stop live search error:", err);
+    res.status(500).json({ msg: "Failed to stop live search" });
+  }
+});
+
+// ----------------------------------------------------------
+// SEND CONNECTION REQUEST
+// ----------------------------------------------------------
+router.post("/send-connection-request", auth, async (req, res) => {
+  try {
+    const { targetUserId, message } = req.body;
+
+    if (!targetUserId || !message) {
+      return res.status(400).json({ msg: "Target user and message required" });
+    }
+
+    // Find both users' active searches
+    const userSearch = await ActiveSearch.findOne({ user: req.user.id }).populate('user', 'name email');
+    const targetSearch = await ActiveSearch.findOne({ user: targetUserId }).populate('user', 'name email');
+
+    if (!userSearch || !targetSearch) {
+      return res.status(400).json({ msg: "One or both users are not actively searching" });
+    }
+
+    // Create connection request (you can store this in a separate model if needed)
+    console.log(`📞 Connection request from ${userSearch.user.name} to ${targetSearch.user.name}`);
+    console.log(`Message: ${message}`);
+
+    // For now, we'll return the connection details
+    // In a real app, you'd store this and notify the target user
+    res.json({
+      message: "Connection request sent",
+      from: {
+        name: userSearch.user.name,
+        email: userSearch.user.email,
+        route: `${userSearch.pickup} → ${userSearch.drop}`,
+        type: userSearch.type
+      },
+      to: {
+        name: targetSearch.user.name,
+        email: targetSearch.user.email,
+        route: `${targetSearch.pickup} → ${targetSearch.drop}`,
+        type: targetSearch.type
+      }
+    });
+
+  } catch (err) {
+    console.error("Send connection request error:", err);
+    res.status(500).json({ msg: "Failed to send connection request" });
+  }
+});
+
+// Helper function for distance calculation
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+           Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+           Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 module.exports = router;

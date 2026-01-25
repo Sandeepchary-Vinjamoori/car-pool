@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import LiveSearch from "../components/LiveSearch";
 
 import {
   MapContainer,
@@ -95,7 +96,14 @@ function LocationAutocomplete({
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
           query
-        )}&limit=5&addressdetails=1&countrycodes=in`
+        )}&limit=5&addressdetails=1&countrycodes=in`,
+        {
+          headers: {
+            'User-Agent': 'CarpoolingApp/1.0 (contact@example.com)',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9'
+          }
+        }
       );
 
       if (response.ok) {
@@ -478,6 +486,54 @@ export default function Dashboard() {
     }
   }, [pickupCoords, drop, findNearbyRides]);
 
+  // Handle current location
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          
+          try {
+            // Reverse geocode to get address
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`,
+              {
+                headers: {
+                  'User-Agent': 'CarpoolingApp/1.0 (contact@example.com)',
+                  'Accept': 'application/json'
+                }
+              }
+            );
+            
+            if (response.ok) {
+              const data = await response.json();
+              setPickup(data.display_name);
+              setPickupCoords({ lat: latitude, lng: longitude });
+            } else {
+              // Fallback if reverse geocoding fails
+              setPickup(`Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+              setPickupCoords({ lat: latitude, lng: longitude });
+            }
+          } catch (error) {
+            // Fallback if API fails
+            setPickup(`Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+            setPickupCoords({ lat: latitude, lng: longitude });
+          }
+        },
+        (error) => {
+          alert('Unable to get your location. Please enter manually.');
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000 // 5 minutes
+        }
+      );
+    } else {
+      alert('Geolocation is not supported by this browser.');
+    }
+  };
+
   // Handle pickup location selection
   const handlePickupSelect = (locationData) => {
     setPickupCoords({
@@ -528,7 +584,7 @@ export default function Dashboard() {
     setMatchedRides(prev => prev.filter(r => r._id !== rideId));
   };
 
-  // Handle booking
+  // Handle booking - Updated to integrate with LiveSearch
   const handleBooking = async (type) => {
     if (!pickup || !drop) {
       alert("Please fill in pickup and drop locations");
@@ -553,55 +609,59 @@ export default function Dashboard() {
         alert("Please select a future date and time for scheduling");
         return;
       }
-    }
 
-    try {
-      const token = localStorage.getItem("token");
-      const rideDateTime = isScheduled ? dateTime : new Date().toISOString();
+      // For scheduled rides, create a regular ride in database
+      try {
+        const token = localStorage.getItem("token");
+        const rideDateTime = dateTime;
 
-      await axios.post(
-        "/api/rides/book",
-        {
-          pickup,
-          drop,
-          dateTime: rideDateTime,
-          type,
-          isScheduled,
-          pickupCoords,
-          dropCoords,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+        await axios.post(
+          "/api/rides/book",
+          {
+            pickup,
+            drop,
+            dateTime: rideDateTime,
+            type,
+            isScheduled,
+            pickupCoords,
+            dropCoords,
+          },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
 
-      const message = isScheduled
-        ? `Ride scheduled successfully for ${new Date(dateTime).toLocaleString()}!`
-        : type === "poolCar"
-          ? "Ride pooled successfully! Starting now."
-          : "Looking for a car - ride booked! Starting now.";
+        alert(`Ride scheduled successfully for ${new Date(dateTime).toLocaleString()}!`);
 
-      alert(message);
+        // Reset form
+        setPickup("");
+        setDrop("");
+        setDateTime("");
+        setIsScheduled(false);
+        setPickupCoords(null);
+        setDropCoords(null);
+        setRouteCoords([]);
+        setDistance(null);
+        setDuration(null);
+        setRideType(null);
+        setNearbyRides([]);
+        setMatchedRides([]);
 
-      // Reset form
-      setPickup("");
-      setDrop("");
-      setDateTime("");
-      setIsScheduled(false);
-      setPickupCoords(null);
-      setDropCoords(null);
-      setRouteCoords([]);
-      setDistance(null);
-      setDuration(null);
-      setRideType(null);
-      setNearbyRides([]);
-      setMatchedRides([]);
-
-      fetchStats();
-      fetchPendingRides();
-    } catch (err) {
-      console.error("Booking error:", err);
-      alert(err.response?.data?.message || "Failed to book ride");
+        fetchStats();
+        fetchPendingRides();
+      } catch (err) {
+        console.error("Booking error:", err);
+        alert(err.response?.data?.message || "Failed to book ride");
+      }
+    } else {
+      // For immediate rides, don't create a database entry - let LiveSearch handle it
+      alert(`Starting live search for ${type === "poolCar" ? "pooling a ride" : "finding a car"}. Use the Live Search section below to find matches!`);
+      
+      // Scroll to LiveSearch component
+      const liveSearchElement = document.querySelector('[data-component="live-search"]');
+      if (liveSearchElement) {
+        liveSearchElement.scrollIntoView({ behavior: 'smooth' });
+      }
     }
   };
 
@@ -698,8 +758,8 @@ export default function Dashboard() {
                   {new Date(pendingRides[0].dateTime).toLocaleString()}
                 </p>
                 <span className={`inline-block mt-2 px-3 py-1 rounded text-sm font-semibold ${pendingRides[0].type === "poolCar"
-                    ? "bg-green-100 text-green-800"
-                    : "bg-purple-100 text-purple-800"
+                  ? "bg-green-100 text-green-800"
+                  : "bg-purple-100 text-purple-800"
                   }`}>
                   {pendingRides[0].type === "poolCar" ? "🚗 Pooling Car" : "🔍 Finding Car"}
                 </span>
@@ -713,6 +773,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
         <div className="flex gap-6">
           <div className="flex-1 h-[420px] bg-white rounded shadow">
             <MapContainer
@@ -814,13 +875,22 @@ export default function Dashboard() {
               <label className="block text-sm font-medium text-gray-700">
                 📍 Pickup Location
               </label>
-              <LocationAutocomplete
-                value={pickup}
-                onChange={setPickup}
-                onSelect={handlePickupSelect}
-                placeholder="Enter pickup location..."
-                className="border border-gray-300 p-3 w-full rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+              <div className="flex gap-2">
+                <LocationAutocomplete
+                  value={pickup}
+                  onChange={setPickup}
+                  onSelect={handlePickupSelect}
+                  placeholder="Enter pickup location..."
+                  className="border border-gray-300 p-3 flex-1 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <button
+                  onClick={getCurrentLocation}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-3 rounded-md font-medium transition whitespace-nowrap"
+                  title="Use Current Location"
+                >
+                  📍 Current
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1">
@@ -843,21 +913,23 @@ export default function Dashboard() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsScheduled(false)}
-                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${!isScheduled
+                  className={`flex-1 py-2 px-3 rounded text-sm font-medium transition ${
+                    !isScheduled
                       ? "bg-blue-600 text-white"
                       : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
+                  }`}
                 >
-                  Book Now
+                  Now
                 </button>
                 <button
                   onClick={() => setIsScheduled(true)}
-                  className={`flex-1 py-2 px-4 rounded-md font-medium transition ${isScheduled
+                  className={`flex-1 py-2 px-3 rounded text-sm font-medium transition ${
+                    isScheduled
                       ? "bg-blue-600 text-white"
                       : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
+                  }`}
                 >
-                  Schedule Later
+                  Schedule
                 </button>
               </div>
             </div>
@@ -865,80 +937,61 @@ export default function Dashboard() {
             {isScheduled && (
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-gray-700">
-                  📅 Select Date & Time
+                  📅 Date & Time
                 </label>
                 <input
                   type="datetime-local"
-                  className="border border-gray-300 p-3 w-full rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   value={dateTime}
                   onChange={(e) => setDateTime(e.target.value)}
-                  min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                  min={new Date().toISOString().slice(0, 16)}
+                  className="border border-gray-300 p-3 w-full rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Select a future date and time for your ride
-                </p>
               </div>
             )}
 
             {/* Route Info */}
             {distance && duration && (
-              <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-1">
-                    📏 <strong>{distance} km</strong>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    ⏱ <strong>{duration} mins</strong>
-                  </span>
-                </div>
+              <div className="bg-green-50 p-3 rounded-md border border-green-200">
+                <p className="text-sm text-green-700">
+                  <strong>Distance:</strong> {distance} km
+                </p>
+                <p className="text-sm text-green-700">
+                  <strong>Duration:</strong> ~{duration} min
+                </p>
               </div>
             )}
 
-            <div className="space-y-3 pt-2">
+            {/* Booking Buttons */}
+            <div className="space-y-3">
               <button
                 onClick={() => handleBooking("poolCar")}
-                disabled={!pickup || !drop || !pickupCoords || !dropCoords}
-                className={`w-full py-3 rounded-md font-semibold transition ${!pickup || !drop || !pickupCoords || !dropCoords
-                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    : rideType === "poolCar"
-                      ? "bg-green-600 text-white"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
-                onMouseEnter={() => setRideType("poolCar")}
-                onMouseLeave={() => setRideType(null)}
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-semibold text-lg shadow-md transition"
               >
-                🚗 {isScheduled ? "Schedule Pool" : "Pool Now"}
+                🚗 Pool a Ride
               </button>
               <button
                 onClick={() => handleBooking("findCar")}
-                disabled={!pickup || !drop || !pickupCoords || !dropCoords}
-                className={`w-full py-3 rounded-md font-semibold transition ${!pickup || !drop || !pickupCoords || !dropCoords
-                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    : rideType === "findCar"
-                      ? "bg-purple-600 text-white"
-                      : "bg-indigo-600 text-white hover:bg-indigo-700"
-                  }`}
-                onMouseEnter={() => setRideType("findCar")}
-                onMouseLeave={() => setRideType(null)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-semibold text-lg shadow-md transition"
               >
-                🔍 {isScheduled ? "Schedule Ride" : "Find Car Now"}
+                🔍 Find a Car
               </button>
+            </div>
 
-              {!isScheduled && (
-                <div className="bg-green-50 border border-green-200 rounded-md p-3 mt-2">
-                  <p className="text-sm text-green-700 text-center">
-                    ⚡ Instant booking - Your ride will start immediately
-                  </p>
-                </div>
-              )}
-
-              {isScheduled && dateTime && (
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mt-2">
-                  <p className="text-sm text-blue-700 text-center">
-                    📅 Scheduled for: {new Date(dateTime).toLocaleString()}
-                  </p>
-                </div>
-              )}
+            {/* Live Search Component */}
+            <div data-component="live-search">
+              <LiveSearch
+                pickup={pickup}
+                drop={drop}
+                pickupCoords={pickupCoords}
+                dropCoords={dropCoords}
+                onMatch={(matchData) => {
+                  console.log('Match found:', matchData);
+                  alert(`🎉 Connected with ${matchData.to.name}!\n\nContact: ${matchData.to.email}\nRoute: ${matchData.to.route}`);
+                }}
+                onStop={() => {
+                  console.log('Live search stopped');
+                }}
+              />
             </div>
           </div>
         </div>

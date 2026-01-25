@@ -22,6 +22,26 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+
+  // Enhanced fields for ride matching
+  contactInfo: {
+    phone: String,
+    preferredContact: { 
+      type: String, 
+      enum: ['phone', 'email'], 
+      default: 'phone' 
+    }
+  },
+  notificationPreferences: {
+    connectionRequests: { 
+      type: Boolean, 
+      default: true 
+    },
+    rideUpdates: { 
+      type: Boolean, 
+      default: true 
+    }
+  }
 });
 
 // Hash password before saving
