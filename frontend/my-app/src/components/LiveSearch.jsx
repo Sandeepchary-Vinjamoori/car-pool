@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import io from 'socket.io-client';
+import {jwtDecode} from 'jwt-decode';
 
 function LiveSearch({ pickup, drop, pickupCoords, dropCoords, onMatch, onStop }) {
   const [isSearching, setIsSearching] = useState(false);
   const [matches, setMatches] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [searchType, setSearchType] = useState(null);
   const [timeLeft, setTimeLeft] = useState(180); // 3 minutes
   const [socket, setSocket] = useState(null);
@@ -18,6 +20,21 @@ function LiveSearch({ pickup, drop, pickupCoords, dropCoords, onMatch, onStop })
   const [partnerApproved, setPartnerApproved] = useState(false);
   const timerRef = useRef(null);
   const socketRef = useRef(null);
+  const chatEndRef = useRef(null);
+
+  // Decode JWT to get current user ID
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      const decoded = jwtDecode(token);
+      setCurrentUserId(decoded.id);
+    }
+  }, []);
+
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
   // Initialize socket connection
   useEffect(() => {
@@ -281,21 +298,45 @@ function LiveSearch({ pickup, drop, pickupCoords, dropCoords, onMatch, onStop })
                 Start chatting to coordinate your ride!
               </div>
             ) : (
-              chatMessages.map((msg, index) => (
-                <div key={index} className={`mb-2 ${msg.type === 'system' ? 'text-center text-gray-500 text-sm' : ''}`}>
-                  {msg.type === 'system' ? (
-                    <span>{msg.message}</span>
-                  ) : (
-                    <div>
-                      <strong className="text-blue-600">{msg.senderName}:</strong>
-                      <span className="ml-2">{msg.message}</span>
-                      <div className="text-xs text-gray-400">
-                        {new Date(msg.timestamp).toLocaleTimeString()}
+              <>
+                {chatMessages.map((msg, index) => {
+                  if (msg.type === "system") {
+                    return (
+                      <div key={index} className="text-center text-gray-500 text-xs my-2">
+                        {msg.message}
+                      </div>
+                    );
+                  }
+
+                  const isMine = msg.senderId === currentUserId;
+
+                  return (
+                    <div
+                      key={index}
+                      className={`flex ${isMine ? "justify-end" : "justify-start"} mb-2`}
+                    >
+                      <div
+                        className={`max-w-[70%] px-4 py-2 rounded-lg text-sm ${
+                          isMine
+                            ? "bg-blue-600 text-white rounded-br-none"
+                            : "bg-gray-200 text-gray-800 rounded-bl-none"
+                        }`}
+                      >
+                        {!isMine && (
+                          <div className="text-xs font-semibold mb-1 text-gray-600">
+                            {msg.senderName}
+                          </div>
+                        )}
+                        <div>{msg.message}</div>
+                        <div className="text-[10px] mt-1 opacity-70 text-right">
+                          {new Date(msg.timestamp).toLocaleTimeString()}
+                        </div>
                       </div>
                     </div>
-                  )}
-                </div>
-              ))
+                  );
+                })}
+                <div ref={chatEndRef} />
+              </>
             )}
           </div>
 
