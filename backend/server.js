@@ -12,14 +12,25 @@ const server = http.createServer(app);
 // Setup Socket.IO with CORS
 const io = socketIo(server, {
   cors: {
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    origin: [
+      "http://localhost:3000", 
+      "http://127.0.0.1:3000",
+      "https://car-pool-frontend-way9.onrender.com"
+    ],
     methods: ["GET", "POST"],
     credentials: true
   },
   allowEIO3: true
 });
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:3000", 
+    "http://127.0.0.1:3000",
+    "https://car-pool-frontend-way9.onrender.com"
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 // Routes

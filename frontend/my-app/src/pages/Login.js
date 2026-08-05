@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import api from "../services/api";
 import { useNavigate } from "react-router-dom";
 
 function Login() {
@@ -10,7 +10,7 @@ function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.post("/api/auth/login", { email, password });
+      const res = await api.post("/api/auth/login", { email, password });
       const token = res.data?.token;
 
       if (token) {
@@ -20,6 +20,7 @@ function Login() {
       }
       alert(res.data?.message || "Unexpected response");
     } catch (err) {
+      console.error("Login error:", err);
       alert(err.response?.data?.message || "Login failed");
     }
   };

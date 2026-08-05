@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../services/api";
 import LiveSearch from "../components/LiveSearch";
 
 import {
@@ -338,10 +338,8 @@ export default function Dashboard() {
     const token = localStorage.getItem("token");
     if (!token) return navigate("/login");
 
-    axios
-      .get("/api/users/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+    api
+      .get("/api/users/me")
       .then((res) => setUserData(res.data));
 
     fetchStats();
@@ -349,19 +347,13 @@ export default function Dashboard() {
   }, [navigate]);
 
   const fetchStats = async () => {
-    const token = localStorage.getItem("token");
-    const res = await axios.get("/api/rides/stats", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await api.get("/api/rides/stats");
     setStats(res.data);
   };
 
   const fetchPendingRides = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get("/api/rides/my", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get("/api/rides/my");
       const pending = res.data
         .filter((ride) => ride.status === "pending")
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -377,10 +369,9 @@ export default function Dashboard() {
       const token = localStorage.getItem("token");
 
       try {
-        const res = await axios.post(
+        const res = await api.post(
           "/api/rides/route",
-          { start, end },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { start, end }
         );
 
         const route = res.data;
@@ -437,16 +428,12 @@ export default function Dashboard() {
     if (!pickupCoords) return;
 
     try {
-      const token = localStorage.getItem("token");
-      const res = await axios.post(
+      const res = await api.post(
         "/api/rides/find",
         {
           lat: pickupCoords.lat,
           lng: pickupCoords.lng,
           drop: drop, // Send drop location for better matching
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
@@ -556,14 +543,11 @@ export default function Dashboard() {
       const token = localStorage.getItem("token");
 
       // Create a connection request
-      await axios.post(
+      await api.post(
         "/api/rides/connect",
         {
           rideId: ride._id,
           message: `Hi! I'd like to join your ride from ${ride.pickup} to ${ride.drop}. My pickup is at ${pickup}.`
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
@@ -615,7 +599,7 @@ export default function Dashboard() {
         const token = localStorage.getItem("token");
         const rideDateTime = dateTime;
 
-        await axios.post(
+        await api.post(
           "/api/rides/book",
           {
             pickup,
@@ -625,9 +609,6 @@ export default function Dashboard() {
             isScheduled,
             pickupCoords,
             dropCoords,
-          },
-          {
-            headers: { Authorization: `Bearer ${token}` },
           }
         );
 
@@ -668,13 +649,8 @@ export default function Dashboard() {
   // Handle ending a ride
   const handleEndRide = async (rideId) => {
     try {
-      const token = localStorage.getItem("token");
-      await axios.put(
-        `/api/rides/${rideId}/complete`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+      await api.put(
+        `/api/rides/${rideId}/complete`
       );
 
       alert("Ride completed successfully!");

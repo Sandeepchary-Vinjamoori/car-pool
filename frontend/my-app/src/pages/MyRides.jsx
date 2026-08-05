@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../services/api";
 import { useNavigate } from "react-router-dom";
 
 function MyRides() {
@@ -8,10 +8,7 @@ function MyRides() {
 
   const fetchRides = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get("/api/rides/my", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get("/api/rides/my");
       setRides(res.data);
     } catch (err) {
       console.log(err);
@@ -32,13 +29,7 @@ function MyRides() {
     try {
       const token = localStorage.getItem("token");
 
-      await axios.put(
-        `/api/rides/${id}/complete`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      await api.put(`/api/rides/${id}/complete`);
 
       fetchRides();
     } catch (err) {
@@ -51,9 +42,7 @@ function MyRides() {
     try {
       const token = localStorage.getItem("token");
 
-      await axios.delete(`/api/rides/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.delete(`/api/rides/${id}`);
 
       alert("Ride cancelled successfully");
 

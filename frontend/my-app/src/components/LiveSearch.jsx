@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import io from 'socket.io-client';
+import { API_BASE_URL } from '../config/api';
 
 function LiveSearch({ pickup, drop, pickupCoords, dropCoords, onMatch, onStop }) {
   const [isSearching, setIsSearching] = useState(false);
@@ -25,7 +26,7 @@ function LiveSearch({ pickup, drop, pickupCoords, dropCoords, onMatch, onStop })
     if (token && !socketRef.current) {
       console.log('🔌 Initializing socket connection...');
       
-      const newSocket = io('http://localhost:5001', {
+      const newSocket = io(API_BASE_URL, {
         auth: { token },
         transports: ['websocket', 'polling'],
         reconnection: true,
