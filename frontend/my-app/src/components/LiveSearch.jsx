@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import io from 'socket.io-client';
-import {jwtDecode} from 'jwt-decode';
 
 function LiveSearch({ pickup, drop, pickupCoords, dropCoords, onMatch, onStop }) {
   const [isSearching, setIsSearching] = useState(false);
   const [matches, setMatches] = useState([]);
-  const [currentUserId, setCurrentUserId] = useState(null);
   const [searchType, setSearchType] = useState(null);
   const [timeLeft, setTimeLeft] = useState(180); // 3 minutes
   const [socket, setSocket] = useState(null);
@@ -20,21 +18,6 @@ function LiveSearch({ pickup, drop, pickupCoords, dropCoords, onMatch, onStop })
   const [partnerApproved, setPartnerApproved] = useState(false);
   const timerRef = useRef(null);
   const socketRef = useRef(null);
-  const chatEndRef = useRef(null);
-
-  // Decode JWT to get current user ID
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      const decoded = jwtDecode(token);
-      setCurrentUserId(decoded.id);
-    }
-  }, []);
-
-  // Auto-scroll chat to bottom when new messages arrive
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
 
   // Initialize socket connection
   useEffect(() => {
@@ -308,25 +291,13 @@ function LiveSearch({ pickup, drop, pickupCoords, dropCoords, onMatch, onStop })
                     );
                   }
 
-                  const isMine = msg.senderId === currentUserId;
-
+                  // All messages show with sender name - no need to differentiate "mine" vs "theirs"
                   return (
-                    <div
-                      key={index}
-                      className={`flex ${isMine ? "justify-end" : "justify-start"} mb-2`}
-                    >
-                      <div
-                        className={`max-w-[70%] px-4 py-2 rounded-lg text-sm ${
-                          isMine
-                            ? "bg-blue-600 text-white rounded-br-none"
-                            : "bg-gray-200 text-gray-800 rounded-bl-none"
-                        }`}
-                      >
-                        {!isMine && (
-                          <div className="text-xs font-semibold mb-1 text-gray-600">
-                            {msg.senderName}
-                          </div>
-                        )}
+                    <div key={index} className="flex justify-start mb-2">
+                      <div className="max-w-[70%] px-4 py-2 rounded-lg text-sm bg-gray-200 text-gray-800 rounded-bl-none">
+                        <div className="text-xs font-semibold mb-1 text-gray-600">
+                          {msg.senderName}
+                        </div>
                         <div>{msg.message}</div>
                         <div className="text-[10px] mt-1 opacity-70 text-right">
                           {new Date(msg.timestamp).toLocaleTimeString()}
@@ -335,7 +306,6 @@ function LiveSearch({ pickup, drop, pickupCoords, dropCoords, onMatch, onStop })
                     </div>
                   );
                 })}
-                <div ref={chatEndRef} />
               </>
             )}
           </div>
